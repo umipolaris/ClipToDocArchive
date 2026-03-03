@@ -172,6 +172,44 @@ cd openclaw-telegram-archive
 - GitHub에서 `Code > Download ZIP`으로 다운로드 후 압축 해제
 - 압축 해제한 폴더 안에 `backend/`, `frontend/`, `infra/` 폴더가 보이면 정상입니다.
 
+### 1-1) (Ubuntu) Docker 설치(처음 1회)
+Ubuntu 리눅스에서 바로 실행하려면 Docker Engine과 Compose가 필요합니다.
+
+1) Ubuntu가 “리눅스 PC/서버(네이티브)”인 경우
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+권한 설정(권장, sudo 없이 docker 실행):
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+정상 동작 확인:
+```bash
+docker version
+docker compose version
+docker run --rm hello-world
+```
+
+2) Ubuntu가 “Windows의 WSL2(Ubuntu)”인 경우
+- 권장 방식: Windows에 Docker Desktop 설치 후, Docker Desktop 설정에서 `WSL integration`을 켭니다.
+- 이 경우 WSL2 내부에 Docker Engine을 따로 설치하지 않고도 `docker`/`docker compose`가 동작합니다.
+
 ### 2) Docker가 정상인지 확인
 Docker가 실행 중인지 확인합니다.
 
