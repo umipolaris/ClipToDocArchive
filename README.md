@@ -133,7 +133,7 @@ scripts/check_sensitive_guard.sh --all
 | 감사 로그 내보내기 | csv/json 포맷 export | `Admin > 운영/감사 로그` | `GET /api/admin/audit-logs/export` |
 | ingest 작업 추적 | 실패/재시도 대상 작업 및 이벤트 조회 | `Admin > 운영/감사 로그` | `GET /api/admin/ingest-jobs`, `GET /api/admin/ingest-jobs/{job_id}/events` |
 | ingest 수동 재처리 | 재큐잉/파일 복구 업로드 | `Admin > 운영/감사 로그` | `POST /api/admin/ingest-jobs/{job_id}/requeue`, `POST /api/admin/ingest-jobs/{job_id}/recover-upload` |
-| 백업/복구 | DB/첨부/설정 백업 생성, 다운로드/삭제, 복구 실행 | `Admin > 백업/복구` | `GET /api/admin/backups/files`, `POST /api/admin/backups/run/{kind}`, `POST /api/admin/backups/restore/*`, `DELETE /api/admin/backups/files/{kind}/{filename}` |
+| 백업/복구 | DB/첨부/설정 백업 생성, 다운로드/삭제, 복구 실행(파일 업로드 복구 포함) | `Admin > 백업/복구` | `GET /api/admin/backups/files`, `POST /api/admin/backups/run/{kind}`, `POST /api/admin/backups/restore/*`, `POST /api/admin/backups/upload-and-restore/*`, `DELETE /api/admin/backups/files/{kind}/{filename}` |
 | 운영 리포트 | 주간 운영지표 생성/조회 | `Admin > 운영/감사 로그` | `POST /api/admin/ops-reports/generate`, `GET /api/admin/ops-reports` |
 
 ### 추가 관리자 계정 생성 예시
@@ -262,6 +262,10 @@ docker compose exec -T api python scripts/bootstrap_admin.py --username admin --
 - MinIO Console: `http://localhost:9001`
 - Prometheus: `http://localhost:9090`
 
+MinIO Console 로그인:
+- 기본 계정: `minio` / `minio_secret`
+- 실제 로그인 값 기준: `infra/env/.env.common`의 `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`
+
 ### 6) 종료/재시작
 ```bash
 # 로그 보기
@@ -316,6 +320,10 @@ make bootstrap-admin ADMIN_USER=admin ADMIN_PASS='ChangeMe123!'
 - API: `http://localhost:8000/api/health`
 - MinIO Console: `http://localhost:9001`
 - Prometheus: `http://localhost:9090`
+
+MinIO Console 로그인:
+- 기본 계정: `minio` / `minio_secret`
+- 실제 로그인 값 기준: `infra/env/.env.common`의 `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`
 
 정지/로그:
 
@@ -400,6 +408,7 @@ Docker Compose는 운영 데이터(파일/DB/캐시/검색인덱스)를 `infra/d
 - 백업 파일 목록에서 다운로드/삭제 가능
 - 복구는 DB/첨부/설정 각각 별도 실행
   - 설정은 `preview/apply` 모드 지원
+  - 서버에 없는 백업 파일도 업로드 즉시 복구(`업로드 후 복구`) 지원
 
 CLI 기준:
 ```bash
@@ -442,6 +451,26 @@ curl -X POST -b /tmp/archive.cookie \
   -H 'Content-Type: application/json' \
   -d '{"filename":"<FILENAME>","target_db":"archive_restore","confirm":true}' \
   "http://localhost:8000/api/admin/backups/restore/db"
+
+# 6) DB 업로드 + 즉시 복구 (multipart/form-data)
+curl -X POST -b /tmp/archive.cookie \
+  -F "file=@./archive_backup.dump" \
+  -F "target_db=archive_restore" \
+  -F "confirm=true" \
+  "http://localhost:8000/api/admin/backups/upload-and-restore/db"
+
+# 7) 첨부 백업 업로드 + 즉시 복구
+curl -X POST -b /tmp/archive.cookie \
+  -F "file=@./objects_backup.tar.gz" \
+  -F "replace_existing=true" \
+  -F "confirm=true" \
+  "http://localhost:8000/api/admin/backups/upload-and-restore/objects"
+
+# 8) 설정 백업 업로드 + 미리보기
+curl -X POST -b /tmp/archive.cookie \
+  -F "file=@./config_backup.tar.gz" \
+  -F "mode=preview" \
+  "http://localhost:8000/api/admin/backups/upload-and-restore/config"
 ```
 
 ## 읽기 전용 모드 (cut-over/점검용)

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArchiveRestore, Download, HardDrive, RefreshCcw, ShieldAlert, Trash2 } from "lucide-react";
-import { apiDelete, apiGet, apiPost, buildApiUrl } from "@/lib/api-client";
+import { apiDelete, apiGet, apiPost, apiPostForm, buildApiUrl } from "@/lib/api-client";
 
 type BackupKind = "db" | "objects" | "config";
 type ConfigRestoreMode = "preview" | "apply";
@@ -97,14 +97,20 @@ export function AdminBackupManager() {
   const [dbFilename, setDbFilename] = useState("");
   const [dbTarget, setDbTarget] = useState("archive_restore");
   const [dbConfirm, setDbConfirm] = useState(false);
+  const [dbUploadFile, setDbUploadFile] = useState<File | null>(null);
+  const [dbUploadInputKey, setDbUploadInputKey] = useState(0);
 
   const [objectsFilename, setObjectsFilename] = useState("");
   const [objectsReplaceExisting, setObjectsReplaceExisting] = useState(true);
   const [objectsConfirm, setObjectsConfirm] = useState(false);
+  const [objectsUploadFile, setObjectsUploadFile] = useState<File | null>(null);
+  const [objectsUploadInputKey, setObjectsUploadInputKey] = useState(0);
 
   const [configFilename, setConfigFilename] = useState("");
   const [configMode, setConfigMode] = useState<ConfigRestoreMode>("preview");
   const [configConfirm, setConfigConfirm] = useState(false);
+  const [configUploadFile, setConfigUploadFile] = useState<File | null>(null);
+  const [configUploadInputKey, setConfigUploadInputKey] = useState(0);
   const [configPreviewFiles, setConfigPreviewFiles] = useState<string[]>([]);
   const [configPreviewTotal, setConfigPreviewTotal] = useState(0);
 
@@ -213,6 +219,32 @@ export function AdminBackupManager() {
     }
   };
 
+  const uploadAndRestoreDb = async () => {
+    if (!dbUploadFile) {
+      setError("업로드할 DB 백업 파일(.dump)을 선택하세요.");
+      return;
+    }
+    setRunning("upload-restore-db");
+    setError("");
+    setMessage("");
+    try {
+      const form = new FormData();
+      form.append("file", dbUploadFile);
+      form.append("target_db", dbTarget.trim());
+      form.append("confirm", String(dbConfirm));
+      const res = await apiPostForm<BackupRestoreDbResponse>("/admin/backups/upload-and-restore/db", form);
+      setMessage(`DB 업로드 복구 완료: ${res.filename} -> ${res.target_db}`);
+      setDbFilename(res.filename);
+      setDbUploadFile(null);
+      setDbUploadInputKey((prev) => prev + 1);
+      await loadKind("db");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "DB 업로드 복구 실패");
+    } finally {
+      setRunning("");
+    }
+  };
+
   const restoreObjects = async () => {
     setRunning("restore-objects");
     setError("");
@@ -226,6 +258,32 @@ export function AdminBackupManager() {
       setMessage(`첨부 복구 완료: ${res.restored_count}개 복원됨`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "첨부 복구 실패");
+    } finally {
+      setRunning("");
+    }
+  };
+
+  const uploadAndRestoreObjects = async () => {
+    if (!objectsUploadFile) {
+      setError("업로드할 첨부 백업 파일(.tar.gz)을 선택하세요.");
+      return;
+    }
+    setRunning("upload-restore-objects");
+    setError("");
+    setMessage("");
+    try {
+      const form = new FormData();
+      form.append("file", objectsUploadFile);
+      form.append("replace_existing", String(objectsReplaceExisting));
+      form.append("confirm", String(objectsConfirm));
+      const res = await apiPostForm<BackupRestoreObjectsResponse>("/admin/backups/upload-and-restore/objects", form);
+      setMessage(`첨부 업로드 복구 완료: ${res.restored_count}개 복원됨`);
+      setObjectsFilename(res.filename);
+      setObjectsUploadFile(null);
+      setObjectsUploadInputKey((prev) => prev + 1);
+      await loadKind("objects");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "첨부 업로드 복구 실패");
     } finally {
       setRunning("");
     }
@@ -252,6 +310,40 @@ export function AdminBackupManager() {
       setConfigPreviewTotal(res.total_files ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "설정 복구 실패");
+    } finally {
+      setRunning("");
+    }
+  };
+
+  const uploadAndRestoreConfig = async () => {
+    if (!configUploadFile) {
+      setError("업로드할 설정 백업 파일(.tar.gz)을 선택하세요.");
+      return;
+    }
+    setRunning("upload-restore-config");
+    setError("");
+    setMessage("");
+    setConfigPreviewFiles([]);
+    setConfigPreviewTotal(0);
+    try {
+      const form = new FormData();
+      form.append("file", configUploadFile);
+      form.append("mode", configMode);
+      form.append("confirm", String(configConfirm));
+      const res = await apiPostForm<BackupRestoreConfigResponse>("/admin/backups/upload-and-restore/config", form);
+      setMessage(
+        configMode === "preview"
+          ? `설정 업로드 미리보기 완료: ${res.total_files}개`
+          : `설정 업로드 적용 완료: ${res.total_files}개`,
+      );
+      setConfigPreviewFiles(res.files ?? []);
+      setConfigPreviewTotal(res.total_files ?? 0);
+      setConfigFilename(res.filename);
+      setConfigUploadFile(null);
+      setConfigUploadInputKey((prev) => prev + 1);
+      await loadKind("config");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "설정 업로드 복구 실패");
     } finally {
       setRunning("");
     }
@@ -400,6 +492,24 @@ export function AdminBackupManager() {
                 DB 복구 실행
               </button>
             </div>
+            <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+              <input
+                key={dbUploadInputKey}
+                type="file"
+                className="rounded border border-stone-300 px-2 py-1.5 text-xs"
+                accept=".dump"
+                onChange={(e) => setDbUploadFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                className="inline-flex items-center justify-center gap-1 rounded border border-indigo-300 bg-indigo-50 px-2 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+                onClick={() => void uploadAndRestoreDb()}
+                disabled={running !== "" || !dbUploadFile}
+                type="button"
+              >
+                <ArchiveRestore className="h-3.5 w-3.5" />
+                업로드 후 복구
+              </button>
+            </div>
             <label className="mt-2 inline-flex items-center gap-1 text-[11px] text-stone-700">
               <input type="checkbox" checked={dbConfirm} onChange={(e) => setDbConfirm(e.target.checked)} />
               위험 작업 확인 (confirm)
@@ -425,6 +535,24 @@ export function AdminBackupManager() {
               >
                 <ArchiveRestore className="h-3.5 w-3.5" />
                 첨부 복구 실행
+              </button>
+            </div>
+            <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+              <input
+                key={objectsUploadInputKey}
+                type="file"
+                className="rounded border border-stone-300 px-2 py-1.5 text-xs"
+                accept=".tar.gz,.tgz"
+                onChange={(e) => setObjectsUploadFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                className="inline-flex items-center justify-center gap-1 rounded border border-indigo-300 bg-indigo-50 px-2 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+                onClick={() => void uploadAndRestoreObjects()}
+                disabled={running !== "" || !objectsUploadFile}
+                type="button"
+              >
+                <ArchiveRestore className="h-3.5 w-3.5" />
+                업로드 후 복구
               </button>
             </div>
             <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-stone-700">
@@ -462,6 +590,24 @@ export function AdminBackupManager() {
               >
                 <ArchiveRestore className="h-3.5 w-3.5" />
                 설정 복구 실행
+              </button>
+            </div>
+            <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto]">
+              <input
+                key={configUploadInputKey}
+                type="file"
+                className="rounded border border-stone-300 px-2 py-1.5 text-xs"
+                accept=".tar.gz,.tgz"
+                onChange={(e) => setConfigUploadFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                className="inline-flex items-center justify-center gap-1 rounded border border-indigo-300 bg-indigo-50 px-2 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+                onClick={() => void uploadAndRestoreConfig()}
+                disabled={running !== "" || !configUploadFile}
+                type="button"
+              >
+                <ArchiveRestore className="h-3.5 w-3.5" />
+                업로드 후 복구
               </button>
             </div>
             <label className="mt-2 inline-flex items-center gap-1 text-[11px] text-stone-700">

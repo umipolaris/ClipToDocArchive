@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import BinaryIO, Literal
 
 from minio.commonconfig import CopySource
 from sqlalchemy.engine import make_url
@@ -25,6 +25,7 @@ _DB_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _BACKUP_FORMAT = "archive-backup-v1"
 _OBJECTS_LAYOUT = "object-keys-v1"
 _PG_RESTORE_COMPAT_MSG = 'unrecognized configuration parameter "transaction_timeout"'
+_UPLOAD_FILENAME_SANITIZER = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 @dataclass
@@ -200,6 +201,98 @@ def delete_backup_file(settings: Settings, kind: BackupKind, filename: str) -> t
         meta_path.unlink(missing_ok=True)
         meta_deleted = True
     return target.name, meta_deleted
+
+
+def _sanitize_uploaded_filename(upload_filename: str | None, *, default_name: str) -> str:
+    name = Path(upload_filename or default_name).name.strip()
+    if not name:
+        name = default_name
+    sanitized = _UPLOAD_FILENAME_SANITIZER.sub("_", name).lstrip(".")
+    return sanitized or default_name
+
+
+def _normalize_uploaded_filename_for_kind(kind: BackupKind, filename: str) -> str:
+    lower = filename.lower()
+    if kind == "db":
+        if not lower.endswith(".dump"):
+            raise ValueError("db restore upload must be a .dump file")
+        return filename
+
+    if lower.endswith(".tgz"):
+        filename = f"{filename[:-4]}.tar.gz"
+        lower = filename.lower()
+    if not lower.endswith(".tar.gz"):
+        raise ValueError(f"{kind} restore upload must be a .tar.gz file")
+    return filename
+
+
+def store_uploaded_backup(
+    settings: Settings,
+    *,
+    kind: BackupKind,
+    upload_filename: str | None,
+    upload_stream: BinaryIO,
+) -> BackupFileInfo:
+    output_dir = _backup_dir(settings, kind)
+    default_name = "backup.dump" if kind == "db" else "backup.tar.gz"
+    sanitized_name = _sanitize_uploaded_filename(upload_filename, default_name=default_name)
+    normalized_name = _normalize_uploaded_filename_for_kind(kind, sanitized_name)
+    if len(normalized_name) > 120:
+        if normalized_name.lower().endswith(".tar.gz"):
+            ext = ".tar.gz"
+            base = normalized_name[: -len(ext)]
+        elif normalized_name.lower().endswith(".dump"):
+            ext = ".dump"
+            base = normalized_name[: -len(ext)]
+        else:
+            ext = ""
+            base = normalized_name
+        normalized_name = f"{base[: max(16, 120 - len(ext))]}{ext}"
+
+    ts = _timestamp()
+    out_file = output_dir / f"upload_{kind}_{ts}_{os.getpid()}_{normalized_name}"
+    tmp_file = Path(f"{out_file}.tmp")
+    meta_file = Path(f"{out_file}.meta")
+
+    try:
+        with tmp_file.open("wb") as fp:
+            shutil.copyfileobj(upload_stream, fp, length=1024 * 1024)
+        size_bytes = int(tmp_file.stat().st_size)
+        if size_bytes <= 0:
+            raise ValueError("uploaded backup file is empty")
+        tmp_file.replace(out_file)
+
+        digest = _sha256(out_file)
+        meta: dict[str, str] = {
+            "timestamp": ts,
+            "kind": kind,
+            "format": _BACKUP_FORMAT,
+            "file": out_file.name,
+            "sha256": digest,
+            "uploaded_from": sanitized_name,
+        }
+        if kind == "db":
+            meta["database"] = "uploaded"
+        elif kind == "objects":
+            meta["objects_layout"] = _OBJECTS_LAYOUT
+            meta["storage_backend"] = settings.storage_backend
+            meta["bucket"] = settings.storage_bucket
+        else:
+            meta["config_root"] = str(Path(settings.backup_config_root))
+        _write_meta(meta_file, meta)
+        _cleanup_old_files(output_dir, retention_days=settings.backup_retention_days)
+        return BackupFileInfo(
+            kind=kind,
+            filename=out_file.name,
+            size_bytes=size_bytes,
+            created_at=_now(),
+            sha256=digest,
+        )
+    except Exception:  # noqa: BLE001
+        tmp_file.unlink(missing_ok=True)
+        out_file.unlink(missing_ok=True)
+        meta_file.unlink(missing_ok=True)
+        raise
 
 
 def _db_connection_params(settings: Settings) -> dict[str, str]:
@@ -580,23 +673,26 @@ def restore_objects_backup(settings: Settings, *, filename: str, replace_existin
         restored_keys: set[str] = set()
         restored = 0
         try:
-            with tarfile.open(source_path, "r:gz") as tar:
-                for member in tar.getmembers():
-                    if not member.isfile():
-                        continue
-                    object_name = _normalize_archive_member_path(member.name)
-                    stream = tar.extractfile(member)
-                    if stream is None:
-                        continue
-                    stage_object_name = f"{stage_prefix}{object_name}"
-                    client.put_object(
-                        bucket_name=settings.storage_bucket,
-                        object_name=stage_object_name,
-                        data=stream,
-                        length=member.size,
-                        part_size=10 * 1024 * 1024,
-                    )
-                    restored_keys.add(object_name)
+            try:
+                with tarfile.open(source_path, "r:gz") as tar:
+                    for member in tar.getmembers():
+                        if not member.isfile():
+                            continue
+                        object_name = _normalize_archive_member_path(member.name)
+                        stream = tar.extractfile(member)
+                        if stream is None:
+                            continue
+                        stage_object_name = f"{stage_prefix}{object_name}"
+                        client.put_object(
+                            bucket_name=settings.storage_bucket,
+                            object_name=stage_object_name,
+                            data=stream,
+                            length=member.size,
+                            part_size=10 * 1024 * 1024,
+                        )
+                        restored_keys.add(object_name)
+            except (tarfile.TarError, OSError) as exc:
+                raise RuntimeError("invalid objects backup archive") from exc
 
             for object_name in sorted(restored_keys):
                 client.copy_object(
@@ -624,21 +720,24 @@ def restore_objects_backup(settings: Settings, *, filename: str, replace_existin
     restored_rel_paths: set[str] = set()
     restored = 0
     try:
-        with tarfile.open(source_path, "r:gz") as tar:
-            for member in tar.getmembers():
-                if not member.isfile():
-                    continue
-                rel = _normalize_archive_member_path(member.name)
-                stage_path = (stage_dir / rel).resolve()
-                if stage_dir.resolve() not in stage_path.parents:
-                    raise RuntimeError("unsafe object archive path")
-                stage_path.parent.mkdir(parents=True, exist_ok=True)
-                stream = tar.extractfile(member)
-                if stream is None:
-                    continue
-                with stage_path.open("wb") as out:
-                    shutil.copyfileobj(stream, out, length=1024 * 1024)
-                restored_rel_paths.add(rel)
+        try:
+            with tarfile.open(source_path, "r:gz") as tar:
+                for member in tar.getmembers():
+                    if not member.isfile():
+                        continue
+                    rel = _normalize_archive_member_path(member.name)
+                    stage_path = (stage_dir / rel).resolve()
+                    if stage_dir.resolve() not in stage_path.parents:
+                        raise RuntimeError("unsafe object archive path")
+                    stage_path.parent.mkdir(parents=True, exist_ok=True)
+                    stream = tar.extractfile(member)
+                    if stream is None:
+                        continue
+                    with stage_path.open("wb") as out:
+                        shutil.copyfileobj(stream, out, length=1024 * 1024)
+                    restored_rel_paths.add(rel)
+        except (tarfile.TarError, OSError) as exc:
+            raise RuntimeError("invalid objects backup archive") from exc
 
         for rel in sorted(restored_rel_paths):
             src = stage_dir / rel
@@ -667,21 +766,24 @@ def restore_config_backup(settings: Settings, *, filename: str, mode: ConfigRest
     config_root.mkdir(parents=True, exist_ok=True)
 
     files: list[str] = []
-    with tarfile.open(source_path, "r:gz") as tar:
-        members = [m for m in tar.getmembers() if m.isfile()]
-        files = [member.name for member in members]
-        if mode == "apply":
-            for member in members:
-                target = (config_root / member.name).resolve()
-                if config_root not in target.parents and target != config_root:
-                    raise RuntimeError("unsafe config archive path")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                stream = tar.extractfile(member)
-                if stream is None:
-                    continue
-                with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
-                    shutil.copyfileobj(stream, tmp, length=1024 * 1024)
-                    tmp_path = Path(tmp.name)
-                tmp_path.replace(target)
+    try:
+        with tarfile.open(source_path, "r:gz") as tar:
+            members = [m for m in tar.getmembers() if m.isfile()]
+            files = [member.name for member in members]
+            if mode == "apply":
+                for member in members:
+                    target = (config_root / member.name).resolve()
+                    if config_root not in target.parents and target != config_root:
+                        raise RuntimeError("unsafe config archive path")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    stream = tar.extractfile(member)
+                    if stream is None:
+                        continue
+                    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
+                        shutil.copyfileobj(stream, tmp, length=1024 * 1024)
+                        tmp_path = Path(tmp.name)
+                    tmp_path.replace(target)
+    except (tarfile.TarError, OSError) as exc:
+        raise RuntimeError("invalid config backup archive") from exc
 
     return ConfigRestorePreview(files=files[:200], total_files=len(files))

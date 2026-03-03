@@ -1,11 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File as UploadFormFile, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser, require_roles
 from app.core.config import get_settings
-from app.db.models import AuditLog, Document, DocumentComment, DocumentFile, DocumentTag, DocumentVersion, File, UserRole
+from app.db.models import (
+    AuditLog,
+    Document,
+    DocumentComment,
+    DocumentFile,
+    DocumentTag,
+    DocumentVersion,
+    File as StoredFile,
+    UserRole,
+)
 from app.db.session import get_db
 from app.schemas.admin_backup import (
     BackupDeleteResponse,
@@ -21,6 +30,7 @@ from app.schemas.admin_backup import (
 )
 from app.services.backup_service import (
     BackupKind,
+    ConfigRestoreMode,
     create_config_backup,
     create_db_backup,
     create_objects_backup,
@@ -30,6 +40,7 @@ from app.services.backup_service import (
     restore_config_backup,
     restore_db_backup,
     restore_objects_backup,
+    store_uploaded_backup,
 )
 
 router = APIRouter()
@@ -60,8 +71,8 @@ def _capture_consistency_marker(db: Session) -> dict[str, int | str | None]:
     return {
         "documents_count": int(db.execute(select(func.count()).select_from(Document)).scalar_one() or 0),
         "documents_max_updated_at": str(db.execute(select(func.max(Document.updated_at))).scalar_one() or ""),
-        "files_count": int(db.execute(select(func.count()).select_from(File)).scalar_one() or 0),
-        "files_max_updated_at": str(db.execute(select(func.max(File.updated_at))).scalar_one() or ""),
+        "files_count": int(db.execute(select(func.count()).select_from(StoredFile)).scalar_one() or 0),
+        "files_max_updated_at": str(db.execute(select(func.max(StoredFile.updated_at))).scalar_one() or ""),
         "document_versions_count": int(db.execute(select(func.count()).select_from(DocumentVersion)).scalar_one() or 0),
         "document_files_count": int(db.execute(select(func.count()).select_from(DocumentFile)).scalar_one() or 0),
         "document_tags_count": int(db.execute(select(func.count()).select_from(DocumentTag)).scalar_one() or 0),
@@ -251,6 +262,49 @@ def restore_backup_db(
     return result
 
 
+@router.post("/admin/backups/upload-and-restore/db", response_model=BackupRestoreDbResponse)
+async def upload_and_restore_backup_db(
+    file: UploadFile = UploadFormFile(...),
+    target_db: str = Form("archive_restore"),
+    confirm: bool = Form(False),
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> BackupRestoreDbResponse:
+    if not confirm:
+        raise HTTPException(status_code=400, detail="confirm=true required")
+    settings = get_settings()
+    try:
+        stored = store_uploaded_backup(
+            settings,
+            kind="db",
+            upload_filename=file.filename,
+            upload_stream=file.file,
+        )
+        restored_target = restore_db_backup(settings, filename=stored.filename, target_db=target_db)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await file.close()
+
+    result = BackupRestoreDbResponse(status="ok", filename=stored.filename, target_db=restored_target)
+    db.add(
+        AuditLog(
+            actor_user_id=current_user.id,
+            action="BACKUP_UPLOAD_RESTORE_DB",
+            target_type="backup_restore",
+            after_json=result.model_dump(mode="json"),
+        )
+    )
+    db.commit()
+    return result
+
+
 @router.post("/admin/backups/restore/objects", response_model=BackupRestoreObjectsResponse)
 def restore_backup_objects(
     req: BackupRestoreObjectsRequest,
@@ -292,6 +346,58 @@ def restore_backup_objects(
     return result
 
 
+@router.post("/admin/backups/upload-and-restore/objects", response_model=BackupRestoreObjectsResponse)
+async def upload_and_restore_backup_objects(
+    file: UploadFile = UploadFormFile(...),
+    replace_existing: bool = Form(True),
+    confirm: bool = Form(False),
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> BackupRestoreObjectsResponse:
+    if not confirm:
+        raise HTTPException(status_code=400, detail="confirm=true required")
+    settings = get_settings()
+    try:
+        stored = store_uploaded_backup(
+            settings,
+            kind="objects",
+            upload_filename=file.filename,
+            upload_stream=file.file,
+        )
+        restored_count = restore_objects_backup(
+            settings,
+            filename=stored.filename,
+            replace_existing=replace_existing,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await file.close()
+
+    result = BackupRestoreObjectsResponse(
+        status="ok",
+        filename=stored.filename,
+        restored_count=restored_count,
+        replace_existing=replace_existing,
+    )
+    db.add(
+        AuditLog(
+            actor_user_id=current_user.id,
+            action="BACKUP_UPLOAD_RESTORE_OBJECTS",
+            target_type="backup_restore",
+            after_json=result.model_dump(mode="json"),
+        )
+    )
+    db.commit()
+    return result
+
+
 @router.post("/admin/backups/restore/config", response_model=BackupRestoreConfigResponse)
 def restore_backup_config(
     req: BackupRestoreConfigRequest,
@@ -322,6 +428,56 @@ def restore_backup_config(
         AuditLog(
             actor_user_id=current_user.id,
             action="BACKUP_RESTORE_CONFIG",
+            target_type="backup_restore",
+            after_json=result.model_dump(mode="json"),
+        )
+    )
+    db.commit()
+    return result
+
+
+@router.post("/admin/backups/upload-and-restore/config", response_model=BackupRestoreConfigResponse)
+async def upload_and_restore_backup_config(
+    file: UploadFile = UploadFormFile(...),
+    mode: ConfigRestoreMode = Form("preview"),
+    confirm: bool = Form(False),
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> BackupRestoreConfigResponse:
+    if mode == "apply" and not confirm:
+        raise HTTPException(status_code=400, detail="confirm=true required for apply mode")
+
+    settings = get_settings()
+    try:
+        stored = store_uploaded_backup(
+            settings,
+            kind="config",
+            upload_filename=file.filename,
+            upload_stream=file.file,
+        )
+        preview = restore_config_backup(settings, filename=stored.filename, mode=mode)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        await file.close()
+
+    result = BackupRestoreConfigResponse(
+        status="ok",
+        filename=stored.filename,
+        mode=mode,
+        total_files=preview.total_files,
+        files=preview.files,
+    )
+    db.add(
+        AuditLog(
+            actor_user_id=current_user.id,
+            action="BACKUP_UPLOAD_RESTORE_CONFIG",
             target_type="backup_restore",
             after_json=result.model_dump(mode="json"),
         )
