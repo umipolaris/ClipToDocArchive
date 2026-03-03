@@ -9,7 +9,7 @@ ADMIN_PASS ?= ChangeMe123!
 doctor:
 	@./infra/scripts/doctor.sh
 
-up:
+up: doctor
 	@cd infra && APP_PROFILE=$(APP_PROFILE) ./scripts/compose.sh up -d --build
 
 down:

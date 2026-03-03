@@ -14,6 +14,59 @@ fail() {
   exit 1
 }
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+INFRA_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+ENV_DIR="$INFRA_DIR/env"
+
+ensure_env_file() {
+  rel="$1" # e.g. .env.common
+  target="$ENV_DIR/$rel"
+  example="$ENV_DIR/${rel}.example"
+
+  if [ -f "$target" ]; then
+    ok "env 파일 존재: infra/env/$rel"
+    return 0
+  fi
+
+  if [ -f "$example" ]; then
+    cp "$example" "$target"
+    ok "env 파일 생성: infra/env/$rel (from ${rel}.example)"
+    return 0
+  fi
+
+  # Minimal fallback (should rarely happen; examples are committed).
+  case "$rel" in
+    .env.common)
+      cat >"$target" <<'EOF'
+# auto-generated minimal defaults
+APP_PROFILE=dev
+POSTGRES_DB=archive
+POSTGRES_USER=archive
+POSTGRES_PASSWORD=archive_pw
+DATABASE_URL=postgresql+psycopg://archive:archive_pw@postgres:5432/archive
+REDIS_URL=redis://redis:6379/0
+MINIO_ROOT_USER=minio
+MINIO_ROOT_PASSWORD=minio_secret
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=minio
+MINIO_SECRET_KEY=minio_secret
+STORAGE_BACKEND=minio
+STORAGE_BUCKET=archive
+SESSION_SECRET=change-me-session-secret-for-prod
+FRONTEND_BASE_URL=http://localhost:3000
+NEXT_PUBLIC_API_BASE=/api
+EOF
+      ;;
+    *)
+      cat >"$target" <<EOF
+# auto-generated minimal defaults
+ENV=${rel#".env."}
+EOF
+      ;;
+  esac
+  warn "env 파일이 없어 최소 기본값으로 생성했습니다: infra/env/$rel"
+}
+
 command -v docker >/dev/null 2>&1 || fail "docker 명령을 찾을 수 없습니다."
 ok "docker 발견: $(docker --version)"
 
@@ -41,5 +94,13 @@ if command -v lsof >/dev/null 2>&1; then
     fi
   done
 fi
+
+mkdir -p "$ENV_DIR" || fail "env 디렉터리를 생성할 수 없습니다: $ENV_DIR"
+
+# Compose가 요구하는 env_file이 없으면 설치 초기 단계에서 바로 실패합니다.
+ensure_env_file ".env.common"
+ensure_env_file ".env.dev"
+ensure_env_file ".env.stage"
+ensure_env_file ".env.prod"
 
 ok "사전 점검 완료"

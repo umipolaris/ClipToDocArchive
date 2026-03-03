@@ -233,6 +233,7 @@ make first-run
 
 2) `make`가 없는 경우(직접 compose 실행)
 ```bash
+./infra/scripts/doctor.sh
 cd infra
 docker compose up -d --build
 ```
