@@ -542,7 +542,6 @@ export function AdminBackupManager() {
                 key={objectsUploadInputKey}
                 type="file"
                 className="rounded border border-stone-300 px-2 py-1.5 text-xs"
-                accept=".tar.gz,.tgz"
                 onChange={(e) => setObjectsUploadFile(e.target.files?.[0] ?? null)}
               />
               <button
@@ -555,6 +554,7 @@ export function AdminBackupManager() {
                 업로드 후 복구
               </button>
             </div>
+            <p className="mt-1 text-[11px] text-stone-500">지원 형식: `.tar.gz`, `.tgz`</p>
             <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-stone-700">
               <label className="inline-flex items-center gap-1">
                 <input type="checkbox" checked={objectsReplaceExisting} onChange={(e) => setObjectsReplaceExisting(e.target.checked)} />
@@ -597,7 +597,6 @@ export function AdminBackupManager() {
                 key={configUploadInputKey}
                 type="file"
                 className="rounded border border-stone-300 px-2 py-1.5 text-xs"
-                accept=".tar.gz,.tgz"
                 onChange={(e) => setConfigUploadFile(e.target.files?.[0] ?? null)}
               />
               <button
@@ -610,6 +609,7 @@ export function AdminBackupManager() {
                 업로드 후 복구
               </button>
             </div>
+            <p className="mt-1 text-[11px] text-stone-500">지원 형식: `.tar.gz`, `.tgz`</p>
             <label className="mt-2 inline-flex items-center gap-1 text-[11px] text-stone-700">
               <input type="checkbox" checked={configConfirm} onChange={(e) => setConfigConfirm(e.target.checked)} />
               apply 모드 위험 작업 확인 (confirm)
