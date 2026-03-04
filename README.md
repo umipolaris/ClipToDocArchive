@@ -172,7 +172,19 @@ cd openclaw-telegram-archive
 - GitHub에서 `Code > Download ZIP`으로 다운로드 후 압축 해제
 - 압축 해제한 폴더 안에 `backend/`, `frontend/`, `infra/` 폴더가 보이면 정상입니다.
 
-### 1-1) (Ubuntu) Docker 설치(처음 1회)
+### 1-1) 환경 파일 준비(.env.common)
+처음 설치 시 `infra/env/.env.common` 파일이 없으면 compose가 실패할 수 있습니다.
+
+```bash
+cp infra/env/.env.common.example infra/env/.env.common
+```
+
+필수 확인 값:
+- `SESSION_SECRET` (운영 전 반드시 변경)
+- `POSTGRES_PASSWORD`
+- `MINIO_ROOT_PASSWORD`
+
+### 1-2) (Ubuntu) Docker 설치(처음 1회)
 Ubuntu 리눅스에서 바로 실행하려면 Docker Engine과 Compose가 필요합니다.
 
 1) Ubuntu가 “리눅스 PC/서버(네이티브)”인 경우
@@ -297,6 +309,11 @@ docker compose up -d --build
 - 기본 포트: `3000(프론트)`, `8000(API)`, `5432(Postgres)`, `9000/9001(MinIO)`, `6379(Redis)`, `7700(Meili)`, `9090(Prometheus)`
 - 이미 사용 중이면 해당 프로그램을 종료하거나 compose 포트를 변경해야 합니다.
 
+4) 복구 직후 `invalid session(401)` 또는 로그인 이상
+- DB를 `promote_to_active=true`로 운영 DB 전환하면 세션이 갱신됩니다.
+- 브라우저에서 1회 새로고침 후 다시 로그인하면 정상입니다.
+- 복구 시점에 없던 계정으로 작업한 경우, 복구본 기준 사용자 상태를 확인하세요.
+
 ## 빠른 시작(요약)
 아래 순서만 실행하면 됩니다.
 
@@ -381,7 +398,18 @@ cd infra
 - 문서 상세/아카이브 상세: 코멘트 목록 조회, 코멘트 수정/삭제(권한 규칙 적용)
 - 아카이브 리스트 제목 셀: 코멘트가 있으면 `말풍선 아이콘 + 개수` 자동 표시
 
-## 최근 반영 사항 (2026-02-27)
+## 최근 반영 사항 (2026-03-04)
+- Admin > 백업/복구 화면에 진행률 바 추가
+  - 업로드 단계 퍼센트 표시
+  - 서버 복구 적용 단계 표시
+- 복구/로그인 오류 메시지 파서 보강
+  - `Failed to execute 'text' on 'Response': body stream already read` 문제 제거
+- 첨부(objects) 복구 예외 처리 안정화
+  - MinIO/아카이브 오류를 일관된 API 에러(`400`)로 반환
+- DB 자동 승격(`promote_to_active`) 후 세션 처리 안정화
+  - 세션 사용자 복구/재매핑, 감사로그 FK 충돌 완화
+
+## 이전 반영 사항 (2026-02-27)
 - 간편게시 단일 라인 설명 입력 시 요약 텍스트가 2번 중복되던 문제 수정
 - 코멘트 API 추가:
   - `GET /api/documents/{id}/comments`
@@ -407,11 +435,13 @@ Docker Compose는 운영 데이터(파일/DB/캐시/검색인덱스)를 `infra/d
 - `Admin > 백업/복구` 탭에서 `DB/첨부파일/설정` 백업 실행
 - 백업 파일 목록에서 다운로드/삭제 가능
 - 복구는 DB/첨부/설정 각각 별도 실행
+  - 진행률 바로 업로드/서버 복구 단계 확인 가능
   - 설정은 `preview/apply` 모드 지원
   - 서버에 없는 백업 파일도 업로드 즉시 복구(`업로드 후 복구`) 지원
   - DB 복구 시 `복구 후 운영 DB 자동 전환` 옵션을 켜면, `target_db` 복구 후 `archive`로 자동 승격 가능
   - 옵션을 끄면 안전상 별도 DB(`target_db`)로만 복원됨(운영 DB 직접 덮어쓰기 방지)
   - 업로드 복구 실패(확장자/포맷 오류) 시 해당 업로드 아티팩트는 백업 목록에서 자동 정리됨
+  - 첨부 복구 포맷/아카이브 오류는 `400`으로 반환되어 원인 메시지 확인 가능
 
 CLI 기준:
 ```bash
@@ -488,6 +518,9 @@ make promote-db SOURCE_DB=archive_restore_test CONFIRM=YES
 cd infra
 ./scripts/compose.sh exec -T postgres psql -U archive -d archive -Atc "SELECT count(*) FROM documents;"
 ```
+
+참고:
+- `promote_to_active=true` 복구 직후에는 세션이 갱신되므로, 브라우저에서 재로그인 1회가 필요할 수 있습니다.
 
 ## 읽기 전용 모드 (cut-over/점검용)
 `READ_ONLY_MODE=true`이면 API 쓰기 요청(`POST/PUT/PATCH/DELETE`)을 차단합니다.
