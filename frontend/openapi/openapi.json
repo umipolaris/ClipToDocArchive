@@ -396,6 +396,46 @@
         }
       }
     },
+    "/api/ingest/jobs/{job_id}": {
+      "get": {
+        "summary": "Get Ingest Job Status",
+        "operationId": "get_ingest_job_status_api_ingest_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestJobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ingest/telegram": {
       "post": {
         "summary": "Ingest Telegram",
@@ -885,6 +925,30 @@
               "default": 10,
               "title": "Recent Limit"
             }
+          },
+          {
+            "name": "pinned_per_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 5,
+              "title": "Pinned Per Category"
+            }
+          },
+          {
+            "name": "pinned_category_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Pinned Category Limit"
+            }
           }
         ],
         "responses": {
@@ -1275,6 +1339,202 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DocumentDeleteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/comments": {
+      "get": {
+        "summary": "List Document Comments",
+        "operationId": "list_document_comments_api_documents__id__comments_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCommentListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Document Comment",
+        "operationId": "create_document_comment_api_documents__id__comments_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentCommentCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCommentItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/comments/{comment_id}": {
+      "patch": {
+        "summary": "Patch Document Comment",
+        "operationId": "patch_document_comment_api_documents__id__comments__comment_id__patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentCommentUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCommentItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Document Comment",
+        "operationId": "delete_document_comment_api_documents__id__comments__comment_id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentCommentDeleteResponse"
                 }
               }
             }
@@ -2745,6 +3005,445 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/files": {
+      "get": {
+        "summary": "Get Backup Files",
+        "operationId": "get_backup_files_api_admin_backups_files_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "db",
+                "objects",
+                "config"
+              ],
+              "type": "string",
+              "default": "db",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupFilesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/files/{kind}/{filename}/download": {
+      "get": {
+        "summary": "Download Backup File",
+        "operationId": "download_backup_file_api_admin_backups_files__kind___filename__download_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "db",
+                "objects",
+                "config"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/files/{kind}/{filename}": {
+      "delete": {
+        "summary": "Remove Backup File",
+        "operationId": "remove_backup_file_api_admin_backups_files__kind___filename__delete",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "db",
+                "objects",
+                "config"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupDeleteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/run/{kind}": {
+      "post": {
+        "summary": "Run Backup",
+        "operationId": "run_backup_api_admin_backups_run__kind__post",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "db",
+                "objects",
+                "config"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/run-all": {
+      "post": {
+        "summary": "Run Backup All",
+        "operationId": "run_backup_all_api_admin_backups_run_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRunAllResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/restore/db": {
+      "post": {
+        "summary": "Restore Backup Db",
+        "operationId": "restore_backup_db_api_admin_backups_restore_db_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupRestoreDbRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRestoreDbResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/upload-and-restore/db": {
+      "post": {
+        "summary": "Upload And Restore Backup Db",
+        "operationId": "upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRestoreDbResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/restore/objects": {
+      "post": {
+        "summary": "Restore Backup Objects",
+        "operationId": "restore_backup_objects_api_admin_backups_restore_objects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupRestoreObjectsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRestoreObjectsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/upload-and-restore/objects": {
+      "post": {
+        "summary": "Upload And Restore Backup Objects",
+        "operationId": "upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRestoreObjectsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/restore/config": {
+      "post": {
+        "summary": "Restore Backup Config",
+        "operationId": "restore_backup_config_api_admin_backups_restore_config_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupRestoreConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRestoreConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/upload-and-restore/config": {
+      "post": {
+        "summary": "Upload And Restore Backup Config",
+        "operationId": "upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRestoreConfigResponse"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -4289,6 +4988,356 @@
         ],
         "title": "BackfillRequest"
       },
+      "BackupDeleteResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "db",
+              "objects",
+              "config"
+            ],
+            "title": "Kind"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "meta_deleted": {
+            "type": "boolean",
+            "title": "Meta Deleted",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "kind",
+          "filename"
+        ],
+        "title": "BackupDeleteResponse"
+      },
+      "BackupFileItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "db",
+              "objects",
+              "config"
+            ],
+            "title": "Kind"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "download_url": {
+            "type": "string",
+            "title": "Download Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "filename",
+          "size_bytes",
+          "created_at",
+          "download_url"
+        ],
+        "title": "BackupFileItem"
+      },
+      "BackupFilesResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "db",
+              "objects",
+              "config"
+            ],
+            "title": "Kind"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BackupFileItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "BackupFilesResponse"
+      },
+      "BackupRestoreConfigRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "apply"
+            ],
+            "title": "Mode",
+            "default": "preview"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename"
+        ],
+        "title": "BackupRestoreConfigRequest"
+      },
+      "BackupRestoreConfigResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "apply"
+            ],
+            "title": "Mode"
+          },
+          "total_files": {
+            "type": "integer",
+            "title": "Total Files"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "filename",
+          "mode",
+          "total_files"
+        ],
+        "title": "BackupRestoreConfigResponse"
+      },
+      "BackupRestoreDbRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "target_db": {
+            "type": "string",
+            "title": "Target Db",
+            "default": "archive_restore"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          },
+          "promote_to_active": {
+            "type": "boolean",
+            "title": "Promote To Active",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename"
+        ],
+        "title": "BackupRestoreDbRequest"
+      },
+      "BackupRestoreDbResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "target_db": {
+            "type": "string",
+            "title": "Target Db"
+          },
+          "promoted": {
+            "type": "boolean",
+            "title": "Promoted",
+            "default": false
+          },
+          "promoted_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted From"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "filename",
+          "target_db"
+        ],
+        "title": "BackupRestoreDbResponse"
+      },
+      "BackupRestoreObjectsRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "replace_existing": {
+            "type": "boolean",
+            "title": "Replace Existing",
+            "default": true
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename"
+        ],
+        "title": "BackupRestoreObjectsRequest"
+      },
+      "BackupRestoreObjectsResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "restored_count": {
+            "type": "integer",
+            "title": "Restored Count"
+          },
+          "replace_existing": {
+            "type": "boolean",
+            "title": "Replace Existing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "filename",
+          "restored_count",
+          "replace_existing"
+        ],
+        "title": "BackupRestoreObjectsResponse"
+      },
+      "BackupRunAllResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BackupRunResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "BackupRunAllResponse"
+      },
+      "BackupRunResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "db",
+              "objects",
+              "config"
+            ],
+            "title": "Kind"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "filename",
+          "size_bytes",
+          "created_at"
+        ],
+        "title": "BackupRunResponse"
+      },
       "Body_add_document_files_api_documents__id__files_post": {
         "properties": {
           "files": {
@@ -4611,6 +5660,87 @@
         ],
         "title": "Body_replace_document_file_api_documents__id__files__file_id__replace_post"
       },
+      "Body_upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "apply"
+            ],
+            "title": "Mode",
+            "default": "preview"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post"
+      },
+      "Body_upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "target_db": {
+            "type": "string",
+            "title": "Target Db",
+            "default": "archive_restore"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          },
+          "promote_to_active": {
+            "type": "boolean",
+            "title": "Promote To Active",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post"
+      },
+      "Body_upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "replace_existing": {
+            "type": "boolean",
+            "title": "Replace Existing",
+            "default": true
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post"
+      },
       "ChangePasswordRequest": {
         "properties": {
           "current_password": {
@@ -4716,6 +5846,77 @@
         ],
         "title": "DashboardErrorCodeCount"
       },
+      "DashboardPinnedCategory": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardPinnedDocument"
+            },
+            "type": "array",
+            "title": "Documents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "count"
+        ],
+        "title": "DashboardPinnedCategory"
+      },
+      "DashboardPinnedDocument": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "event_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Date"
+          },
+          "ingested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ingested At"
+          },
+          "review_status": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "category",
+          "ingested_at",
+          "review_status"
+        ],
+        "title": "DashboardPinnedDocument"
+      },
       "DashboardRecentDocument": {
         "properties": {
           "id": {
@@ -4802,6 +6003,13 @@
             "type": "array",
             "title": "Categories"
           },
+          "pinned_by_category": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardPinnedCategory"
+            },
+            "type": "array",
+            "title": "Pinned By Category"
+          },
           "recent_documents": {
             "items": {
               "$ref": "#/components/schemas/DashboardRecentDocument"
@@ -4856,6 +6064,145 @@
           "username"
         ],
         "title": "DeleteUserResponse"
+      },
+      "DocumentCommentCreateRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "DocumentCommentCreateRequest"
+      },
+      "DocumentCommentDeleteResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "comment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Comment Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "document_id",
+          "comment_id"
+        ],
+        "title": "DocumentCommentDeleteResponse"
+      },
+      "DocumentCommentItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Username"
+          },
+          "is_edited": {
+            "type": "boolean",
+            "title": "Is Edited",
+            "default": false
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "default": false
+          },
+          "can_delete": {
+            "type": "boolean",
+            "title": "Can Delete",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "document_id",
+          "content",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentCommentItem"
+      },
+      "DocumentCommentListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentCommentItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "DocumentCommentListResponse"
+      },
+      "DocumentCommentUpdateRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "DocumentCommentUpdateRequest"
       },
       "DocumentDeleteResponse": {
         "properties": {
@@ -4963,6 +6310,23 @@
             "type": "string",
             "format": "date-time",
             "title": "Ingested At"
+          },
+          "is_pinned": {
+            "type": "boolean",
+            "title": "Is Pinned",
+            "default": false
+          },
+          "pinned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned At"
           },
           "review_status": {
             "$ref": "#/components/schemas/ReviewStatus"
@@ -5251,6 +6615,23 @@
             "format": "date-time",
             "title": "Ingested At"
           },
+          "is_pinned": {
+            "type": "boolean",
+            "title": "Is Pinned",
+            "default": false
+          },
+          "pinned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned At"
+          },
           "last_modified_at": {
             "anyOf": [
               {
@@ -5273,6 +6654,11 @@
           "file_count": {
             "type": "integer",
             "title": "File Count",
+            "default": 0
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count",
             "default": 0
           },
           "files": {
@@ -5358,6 +6744,17 @@
             ],
             "title": "Description"
           },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
           "category_id": {
             "anyOf": [
               {
@@ -5392,6 +6789,17 @@
               }
             ],
             "title": "Event Date"
+          },
+          "is_pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pinned"
           },
           "tags": {
             "anyOf": [
@@ -6083,6 +7491,123 @@
         ],
         "title": "IngestJobItem"
       },
+      "IngestJobStatusResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/IngestState"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ref"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count"
+          },
+          "max_attempts": {
+            "type": "integer",
+            "title": "Max Attempts"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "last_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Message"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Received At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "is_terminal": {
+            "type": "boolean",
+            "title": "Is Terminal"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "state",
+          "source",
+          "attempt_count",
+          "max_attempts",
+          "received_at",
+          "is_terminal",
+          "success"
+        ],
+        "title": "IngestJobStatusResponse"
+      },
       "IngestJobsResponse": {
         "properties": {
           "items": {
@@ -6257,6 +7782,11 @@
               }
             ],
             "title": "Event Date"
+          },
+          "is_pinned": {
+            "type": "boolean",
+            "title": "Is Pinned",
+            "default": false
           },
           "tags": {
             "items": {

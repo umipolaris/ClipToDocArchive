@@ -126,6 +126,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ingest/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ingest Job Status */
+        get: operations["get_ingest_job_status_api_ingest_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ingest/telegram": {
         parameters: {
             query?: never;
@@ -347,6 +364,42 @@ export interface paths {
         head?: never;
         /** Patch Document */
         patch: operations["patch_document_api_documents__id__patch"];
+        trace?: never;
+    };
+    "/api/documents/{id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Comments */
+        get: operations["list_document_comments_api_documents__id__comments_get"];
+        put?: never;
+        /** Create Document Comment */
+        post: operations["create_document_comment_api_documents__id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/comments/{comment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Document Comment */
+        delete: operations["delete_document_comment_api_documents__id__comments__comment_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Document Comment */
+        patch: operations["patch_document_comment_api_documents__id__comments__comment_id__patch"];
         trace?: never;
     };
     "/api/documents/{id}/history": {
@@ -795,6 +848,193 @@ export interface paths {
         patch: operations["update_saved_filter_api_saved_filters__saved_filter_id__patch"];
         trace?: never;
     };
+    "/api/admin/backups/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Backup Files */
+        get: operations["get_backup_files_api_admin_backups_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/files/{kind}/{filename}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Backup File */
+        get: operations["download_backup_file_api_admin_backups_files__kind___filename__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/files/{kind}/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Backup File */
+        delete: operations["remove_backup_file_api_admin_backups_files__kind___filename__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/run/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Backup */
+        post: operations["run_backup_api_admin_backups_run__kind__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/run-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Backup All */
+        post: operations["run_backup_all_api_admin_backups_run_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/restore/db": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Backup Db */
+        post: operations["restore_backup_db_api_admin_backups_restore_db_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/upload-and-restore/db": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload And Restore Backup Db */
+        post: operations["upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/restore/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Backup Objects */
+        post: operations["restore_backup_objects_api_admin_backups_restore_objects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/upload-and-restore/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload And Restore Backup Objects */
+        post: operations["upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/restore/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Backup Config */
+        post: operations["restore_backup_config_api_admin_backups_restore_config_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/upload-and-restore/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload And Restore Backup Config */
+        post: operations["upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/audit-logs": {
         parameters: {
             query?: never;
@@ -1235,6 +1475,172 @@ export interface components {
              */
             batch_size: number;
         };
+        /** BackupDeleteResponse */
+        BackupDeleteResponse: {
+            /** Status */
+            status: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "db" | "objects" | "config";
+            /** Filename */
+            filename: string;
+            /**
+             * Meta Deleted
+             * @default false
+             */
+            meta_deleted: boolean;
+        };
+        /** BackupFileItem */
+        BackupFileItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "db" | "objects" | "config";
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Sha256 */
+            sha256?: string | null;
+            /** Download Url */
+            download_url: string;
+        };
+        /** BackupFilesResponse */
+        BackupFilesResponse: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "db" | "objects" | "config";
+            /** Items */
+            items?: components["schemas"]["BackupFileItem"][];
+        };
+        /** BackupRestoreConfigRequest */
+        BackupRestoreConfigRequest: {
+            /** Filename */
+            filename: string;
+            /**
+             * Mode
+             * @default preview
+             * @enum {string}
+             */
+            mode: "preview" | "apply";
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+        };
+        /** BackupRestoreConfigResponse */
+        BackupRestoreConfigResponse: {
+            /** Status */
+            status: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "preview" | "apply";
+            /** Total Files */
+            total_files: number;
+            /** Files */
+            files?: string[];
+        };
+        /** BackupRestoreDbRequest */
+        BackupRestoreDbRequest: {
+            /** Filename */
+            filename: string;
+            /**
+             * Target Db
+             * @default archive_restore
+             */
+            target_db: string;
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+            /**
+             * Promote To Active
+             * @default false
+             */
+            promote_to_active: boolean;
+        };
+        /** BackupRestoreDbResponse */
+        BackupRestoreDbResponse: {
+            /** Status */
+            status: string;
+            /** Filename */
+            filename: string;
+            /** Target Db */
+            target_db: string;
+            /**
+             * Promoted
+             * @default false
+             */
+            promoted: boolean;
+            /** Promoted From */
+            promoted_from?: string | null;
+        };
+        /** BackupRestoreObjectsRequest */
+        BackupRestoreObjectsRequest: {
+            /** Filename */
+            filename: string;
+            /**
+             * Replace Existing
+             * @default true
+             */
+            replace_existing: boolean;
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+        };
+        /** BackupRestoreObjectsResponse */
+        BackupRestoreObjectsResponse: {
+            /** Status */
+            status: string;
+            /** Filename */
+            filename: string;
+            /** Restored Count */
+            restored_count: number;
+            /** Replace Existing */
+            replace_existing: boolean;
+        };
+        /** BackupRunAllResponse */
+        BackupRunAllResponse: {
+            /** Items */
+            items?: components["schemas"]["BackupRunResponse"][];
+        };
+        /** BackupRunResponse */
+        BackupRunResponse: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "db" | "objects" | "config";
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Sha256 */
+            sha256?: string | null;
+        };
         /** Body_add_document_files_api_documents__id__files_post */
         Body_add_document_files_api_documents__id__files_post: {
             /** Files */
@@ -1336,6 +1742,57 @@ export interface components {
              */
             change_reason: string;
         };
+        /** Body_upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post */
+        Body_upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post: {
+            /** File */
+            file: string;
+            /**
+             * Mode
+             * @default preview
+             * @enum {string}
+             */
+            mode: "preview" | "apply";
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+        };
+        /** Body_upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post */
+        Body_upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post: {
+            /** File */
+            file: string;
+            /**
+             * Target Db
+             * @default archive_restore
+             */
+            target_db: string;
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+            /**
+             * Promote To Active
+             * @default false
+             */
+            promote_to_active: boolean;
+        };
+        /** Body_upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post */
+        Body_upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post: {
+            /** File */
+            file: string;
+            /**
+             * Replace Existing
+             * @default true
+             */
+            replace_existing: boolean;
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -1383,6 +1840,35 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** DashboardPinnedCategory */
+        DashboardPinnedCategory: {
+            /** Category */
+            category: string;
+            /** Count */
+            count: number;
+            /** Documents */
+            documents?: components["schemas"]["DashboardPinnedDocument"][];
+        };
+        /** DashboardPinnedDocument */
+        DashboardPinnedDocument: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Category */
+            category: string;
+            /** Event Date */
+            event_date?: string | null;
+            /**
+             * Ingested At
+             * Format: date-time
+             */
+            ingested_at: string;
+            review_status: components["schemas"]["ReviewStatus"];
+        };
         /** DashboardRecentDocument */
         DashboardRecentDocument: {
             /**
@@ -1421,6 +1907,8 @@ export interface components {
             failed_error_codes?: components["schemas"]["DashboardErrorCodeCount"][];
             /** Categories */
             categories?: components["schemas"]["DashboardCategoryCount"][];
+            /** Pinned By Category */
+            pinned_by_category?: components["schemas"]["DashboardPinnedCategory"][];
             /** Recent Documents */
             recent_documents?: components["schemas"]["DashboardRecentDocument"][];
             /**
@@ -1444,6 +1932,80 @@ export interface components {
             nullified_refs?: {
                 [key: string]: number;
             };
+        };
+        /** DocumentCommentCreateRequest */
+        DocumentCommentCreateRequest: {
+            /** Content */
+            content: string;
+        };
+        /** DocumentCommentDeleteResponse */
+        DocumentCommentDeleteResponse: {
+            /** Status */
+            status: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Comment Id
+             * Format: uuid
+             */
+            comment_id: string;
+        };
+        /** DocumentCommentItem */
+        DocumentCommentItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Content */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Created By */
+            created_by?: string | null;
+            /** Created By Username */
+            created_by_username?: string | null;
+            /**
+             * Is Edited
+             * @default false
+             */
+            is_edited: boolean;
+            /**
+             * Can Edit
+             * @default false
+             */
+            can_edit: boolean;
+            /**
+             * Can Delete
+             * @default false
+             */
+            can_delete: boolean;
+        };
+        /** DocumentCommentListResponse */
+        DocumentCommentListResponse: {
+            /** Items */
+            items?: components["schemas"]["DocumentCommentItem"][];
+        };
+        /** DocumentCommentUpdateRequest */
+        DocumentCommentUpdateRequest: {
+            /** Content */
+            content: string;
         };
         /** DocumentDeleteResponse */
         DocumentDeleteResponse: {
@@ -1489,6 +2051,13 @@ export interface components {
              * Format: date-time
              */
             ingested_at: string;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /** Pinned At */
+            pinned_at?: string | null;
             review_status: components["schemas"]["ReviewStatus"];
             /** Review Reasons */
             review_reasons: string[];
@@ -1595,6 +2164,13 @@ export interface components {
              * Format: date-time
              */
             ingested_at: string;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
+            /** Pinned At */
+            pinned_at?: string | null;
             /** Last Modified At */
             last_modified_at?: string | null;
             /** Tags */
@@ -1604,6 +2180,11 @@ export interface components {
              * @default 0
              */
             file_count: number;
+            /**
+             * Comment Count
+             * @default 0
+             */
+            comment_count: number;
             /** Files */
             files?: components["schemas"]["DocumentListFileItem"][];
             review_status: components["schemas"]["ReviewStatus"];
@@ -1627,12 +2208,16 @@ export interface components {
             title?: string | null;
             /** Description */
             description?: string | null;
+            /** Summary */
+            summary?: string | null;
             /** Category Id */
             category_id?: string | null;
             /** Category Name */
             category_name?: string | null;
             /** Event Date */
             event_date?: string | null;
+            /** Is Pinned */
+            is_pinned?: boolean | null;
             /** Tags */
             tags?: string[] | null;
             review_status?: components["schemas"]["ReviewStatus"] | null;
@@ -1887,6 +2472,41 @@ export interface components {
             /** Finished At */
             finished_at?: string | null;
         };
+        /** IngestJobStatusResponse */
+        IngestJobStatusResponse: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            state: components["schemas"]["IngestState"];
+            source: components["schemas"]["SourceType"];
+            /** Source Ref */
+            source_ref?: string | null;
+            /** Document Id */
+            document_id?: string | null;
+            /** Attempt Count */
+            attempt_count: number;
+            /** Max Attempts */
+            max_attempts: number;
+            /** Last Error Code */
+            last_error_code?: string | null;
+            /** Last Error Message */
+            last_error_message?: string | null;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Is Terminal */
+            is_terminal: boolean;
+            /** Success */
+            success: boolean;
+        };
         /** IngestJobsResponse */
         IngestJobsResponse: {
             /** Items */
@@ -1948,6 +2568,11 @@ export interface components {
             category_name?: string | null;
             /** Event Date */
             event_date?: string | null;
+            /**
+             * Is Pinned
+             * @default false
+             */
+            is_pinned: boolean;
             /** Tags */
             tags?: string[];
             /** @default NONE */
@@ -3013,6 +3638,37 @@ export interface operations {
             };
         };
     };
+    get_ingest_job_status_api_ingest_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestJobStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ingest_telegram_api_ingest_telegram_post: {
         parameters: {
             query?: never;
@@ -3289,6 +3945,8 @@ export interface operations {
         parameters: {
             query?: {
                 recent_limit?: number;
+                pinned_per_category?: number;
+                pinned_category_limit?: number;
             };
             header?: never;
             path?: never;
@@ -3494,6 +4152,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_comments_api_documents__id__comments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCommentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_comment_api_documents__id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCommentCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCommentItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_comment_api_documents__id__comments__comment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCommentDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_document_comment_api_documents__id__comments__comment_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                comment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCommentUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentCommentItem"];
                 };
             };
             /** @description Validation Error */
@@ -4476,6 +5268,350 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SavedFilterSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_backup_files_api_admin_backups_files_get: {
+        parameters: {
+            query?: {
+                kind?: "db" | "objects" | "config";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupFilesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_backup_file_api_admin_backups_files__kind___filename__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "db" | "objects" | "config";
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_backup_file_api_admin_backups_files__kind___filename__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "db" | "objects" | "config";
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_backup_api_admin_backups_run__kind__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "db" | "objects" | "config";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_backup_all_api_admin_backups_run_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRunAllResponse"];
+                };
+            };
+        };
+    };
+    restore_backup_db_api_admin_backups_restore_db_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupRestoreDbRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRestoreDbResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_and_restore_backup_db_api_admin_backups_upload_and_restore_db_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRestoreDbResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_backup_objects_api_admin_backups_restore_objects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupRestoreObjectsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRestoreObjectsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRestoreObjectsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_backup_config_api_admin_backups_restore_config_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupRestoreConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRestoreConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_and_restore_backup_config_api_admin_backups_upload_and_restore_config_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRestoreConfigResponse"];
                 };
             };
             /** @description Validation Error */
