@@ -4,7 +4,7 @@ APP_PROFILE ?= dev
 ADMIN_USER ?= admin
 ADMIN_PASS ?= ChangeMe123!
 
-.PHONY: ensure-env doctor up down restart ps logs health wait-api first-run bootstrap-admin install-hooks guard-staged guard-all backup-db backup-objects backup-config backup-all restore-db restore-objects restore-config promote-db
+.PHONY: ensure-env ensure-api doctor up down restart ps logs health wait-api first-run bootstrap-admin install-hooks guard-staged guard-all backup-db backup-objects backup-config backup-all restore-db restore-objects restore-config promote-db
 
 ensure-env:
 	@if [ ! -f "infra/env/.env.common" ]; then \
@@ -25,6 +25,22 @@ ensure-env:
 
 doctor: ensure-env
 	@./infra/scripts/doctor.sh
+
+ensure-api: ensure-env
+	@cd infra && APP_PROFILE=$(APP_PROFILE) ./scripts/compose.sh ps --status running api >/dev/null 2>&1 || { \
+	  echo "[bootstrap] api 서비스가 꺼져 있어 시작합니다..."; \
+	  APP_PROFILE=$(APP_PROFILE) ./scripts/compose.sh up -d --build api; \
+	}
+	@i=0; \
+	until curl -fsS http://localhost:8000/api/health >/dev/null 2>&1; do \
+	  i=$$((i+1)); \
+	  if [ $$i -ge 60 ]; then \
+	    echo "API healthcheck timeout (120s)"; \
+	    exit 1; \
+	  fi; \
+	  sleep 2; \
+	done; \
+	echo "API is healthy"
 
 up: ensure-env doctor
 	@cd infra && APP_PROFILE=$(APP_PROFILE) ./scripts/compose.sh up -d --build
@@ -59,7 +75,7 @@ wait-api:
 first-run: ensure-env doctor up wait-api
 	@echo "다음 단계: make bootstrap-admin ADMIN_USER=admin ADMIN_PASS='ChangeMe123!'"
 
-bootstrap-admin: ensure-env
+bootstrap-admin: ensure-api
 	@cd infra && APP_PROFILE=$(APP_PROFILE) ./scripts/compose.sh exec -T api sh -lc "cd /app && python scripts/bootstrap_admin.py --username '$(ADMIN_USER)' --password '$(ADMIN_PASS)'"
 
 install-hooks:

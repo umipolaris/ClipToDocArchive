@@ -279,6 +279,9 @@ cd infra
 docker compose exec -T api python scripts/bootstrap_admin.py --username admin --password "ChangeMe123!"
 ```
 
+`make bootstrap-admin` 사용 시:
+- API가 꺼져 있으면 자동으로 `api` 서비스를 기동하고 헬스체크 통과 후 계정을 생성합니다.
+
 ### 5) 접속 확인
 - 프론트: `http://localhost:3000/archive`
 - API 헬스: `http://localhost:8000/api/health`
