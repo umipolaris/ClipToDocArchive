@@ -92,8 +92,8 @@ export function ManualPostComposer() {
   const [description, setDescription] = useState("");
   const [captionRaw, setCaptionRaw] = useState("");
   const [summary, setSummary] = useState("");
-  const [categoryName, setCategoryName] = useState("");
-  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [selectedCategoryNames, setSelectedCategoryNames] = useState<string[]>([]);
+  const [customCategoryName, setCustomCategoryName] = useState("");
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(true);
   const [categoryOptionsError, setCategoryOptionsError] = useState("");
@@ -111,10 +111,11 @@ export function ManualPostComposer() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const parsedTags = parseTags(tagsInput);
+  const primaryCategoryName = selectedCategoryNames[0] || "";
   const templateCaption = buildCaptionTemplate({
     title,
     description,
-    categoryName,
+    categoryName: primaryCategoryName,
     eventDate,
     tags: parsedTags,
   });
@@ -153,7 +154,7 @@ export function ManualPostComposer() {
       return;
     }
     if (useTemplateMode) {
-      if (!categoryName.trim()) {
+      if (selectedCategoryNames.length === 0) {
         setError("템플릿 모드에서는 #분류를 위해 카테고리명을 입력해야 합니다.");
         return;
       }
@@ -187,7 +188,8 @@ export function ManualPostComposer() {
       const commonPayload = {
         description,
         summary: summary.trim() || null,
-        category_name: categoryName.trim() || null,
+        category_name: primaryCategoryName || null,
+        category_names: selectedCategoryNames,
         event_date: eventDate || null,
         tags: parsedTags,
         review_status: reviewStatus,
@@ -207,7 +209,7 @@ export function ManualPostComposer() {
             ? buildCaptionTemplate({
                 title: perTitle,
                 description,
-                categoryName,
+                categoryName: primaryCategoryName,
                 eventDate,
                 tags: parsedTags,
               })
@@ -276,8 +278,8 @@ export function ManualPostComposer() {
         setDescription("");
         setCaptionRaw("");
         setSummary("");
-        setCategoryName("");
-        setIsCustomCategory(false);
+        setSelectedCategoryNames([]);
+        setCustomCategoryName("");
         setEventDate("");
         setTagsInput(DEFAULT_TAG_TEMPLATE);
         setReviewStatus("NONE");
@@ -324,8 +326,8 @@ export function ManualPostComposer() {
       setDescription("");
       setCaptionRaw("");
       setSummary("");
-      setCategoryName("");
-      setIsCustomCategory(false);
+      setSelectedCategoryNames([]);
+      setCustomCategoryName("");
       setEventDate("");
       setTagsInput(DEFAULT_TAG_TEMPLATE);
       setReviewStatus("NONE");
@@ -366,6 +368,28 @@ export function ManualPostComposer() {
     setDragActive(false);
     const dropped = Array.from(e.dataTransfer.files ?? []);
     addFiles(dropped);
+  };
+
+  const toggleCategorySelection = (categoryName: string) => {
+    const normalized = categoryName.trim();
+    if (!normalized) return;
+    setSelectedCategoryNames((prev) => {
+      if (prev.includes(normalized)) {
+        return prev.filter((name) => name !== normalized);
+      }
+      return [...prev, normalized];
+    });
+  };
+
+  const addCustomCategorySelection = () => {
+    const normalized = customCategoryName.trim();
+    if (!normalized) return;
+    setSelectedCategoryNames((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
+    setCustomCategoryName("");
+  };
+
+  const removeSelectedCategory = (categoryName: string) => {
+    setSelectedCategoryNames((prev) => prev.filter((name) => name !== categoryName));
   };
 
   return (
@@ -415,36 +439,48 @@ export function ManualPostComposer() {
         </label>
 
         <label className="grid gap-1 text-sm">
-          <span className="text-xs font-semibold text-stone-600">카테고리(드롭다운)</span>
-          <select
-            className="rounded border border-stone-300 px-2 py-2"
-            value={isCustomCategory ? "__custom__" : categoryName}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (value === "__custom__") {
-                setIsCustomCategory(true);
-                return;
-              }
-              setIsCustomCategory(false);
-              setCategoryName(value);
-            }}
-          >
-            <option value="">카테고리 선택</option>
-            {categoryOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-            <option value="__custom__">직접 입력</option>
-          </select>
-          {isCustomCategory ? (
-            <input
-              className="rounded border border-stone-300 px-3 py-2"
-              placeholder="신규 카테고리명"
-              value={categoryName}
-              onChange={(e) => setCategoryName(e.target.value)}
-            />
-          ) : null}
+          <span className="text-xs font-semibold text-stone-600">카테고리(복수 선택 가능)</span>
+          <div className="space-y-2 rounded border border-stone-200 p-2">
+            <div className="grid max-h-24 grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-x-2 gap-y-1 overflow-auto rounded border border-stone-200 bg-white p-2">
+              {categoryOptions.map((name) => (
+                <label key={name} className="flex min-w-0 items-center gap-2 text-xs text-stone-700">
+                  <input type="checkbox" checked={selectedCategoryNames.includes(name)} onChange={() => toggleCategorySelection(name)} />
+                  <span className="truncate">{name}</span>
+                </label>
+              ))}
+              {categoryOptions.length === 0 ? <p className="text-xs text-stone-500">등록된 카테고리가 없습니다.</p> : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                className="rounded border border-stone-300 px-3 py-2"
+                placeholder="신규 카테고리명"
+                value={customCategoryName}
+                onChange={(e) => setCustomCategoryName(e.target.value)}
+              />
+              <button
+                type="button"
+                className="rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 hover:bg-stone-50"
+                onClick={addCustomCategorySelection}
+              >
+                추가
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {selectedCategoryNames.length === 0 ? <span className="text-[11px] text-stone-500">선택된 카테고리 없음</span> : null}
+              {selectedCategoryNames.map((name, idx) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] ${idx === 0 ? "border-accent bg-accent/10 text-accent" : "border-stone-300 bg-white text-stone-700"}`}
+                  title={idx === 0 ? "기본 카테고리" : "보조 카테고리"}
+                  onClick={() => removeSelectedCategory(name)}
+                >
+                  <span>{name}</span>
+                  <span>×</span>
+                </button>
+              ))}
+            </div>
+          </div>
           {categoryOptionsLoading ? <p className="text-[11px] text-stone-500">카테고리 목록 로딩 중...</p> : null}
           {categoryOptionsError ? <p className="text-[11px] text-amber-700">목록 로드 실패: {categoryOptionsError}</p> : null}
         </label>

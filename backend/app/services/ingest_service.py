@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.db.models import (
     Category,
     Document,
+    DocumentCategory,
     DocumentFile,
     DocumentTag,
     DocumentVersion,
@@ -275,6 +276,8 @@ def _create_document(
     db.refresh(doc)
 
     db.add(DocumentFile(document_id=doc.id, file_id=file_row.id, is_primary=True))
+    if doc.category_id:
+        db.add(DocumentCategory(document_id=doc.id, category_id=doc.category_id))
 
     tag_rows = _upsert_tags(db, tags)
     for tag in tag_rows:

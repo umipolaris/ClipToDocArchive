@@ -975,6 +975,263 @@
         }
       }
     },
+    "/api/dashboard/tasks": {
+      "get": {
+        "summary": "Get Dashboard Tasks",
+        "operationId": "get_dashboard_tasks_api_dashboard_tasks_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM",
+              "title": "Month"
+            },
+            "description": "YYYY-MM"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardTaskListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Dashboard Task",
+        "operationId": "create_dashboard_task_api_dashboard_tasks_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardTaskCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardTaskItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dashboard/tasks/{task_id}": {
+      "get": {
+        "summary": "Get Dashboard Task",
+        "operationId": "get_dashboard_task_api_dashboard_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardTaskItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update Dashboard Task",
+        "operationId": "update_dashboard_task_api_dashboard_tasks__task_id__patch",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardTaskUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardTaskItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Dashboard Task",
+        "operationId": "delete_dashboard_task_api_dashboard_tasks__task_id__delete",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dashboard/task-settings": {
+      "get": {
+        "summary": "Get Dashboard Task Settings",
+        "operationId": "get_dashboard_task_settings_api_dashboard_task_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardTaskSettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Dashboard Task Settings",
+        "operationId": "update_dashboard_task_settings_api_dashboard_task_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardTaskSettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardTaskSettingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents": {
       "get": {
         "summary": "List Documents",
@@ -3019,6 +3276,94 @@
         }
       }
     },
+    "/api/branding/logo": {
+      "get": {
+        "summary": "Get Branding Logo",
+        "operationId": "get_branding_logo_api_branding_logo_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingLogoResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/branding/logo/image": {
+      "get": {
+        "summary": "Get Branding Logo Image",
+        "operationId": "get_branding_logo_image_api_branding_logo_image_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/branding/logo": {
+      "post": {
+        "summary": "Upload Branding Logo",
+        "operationId": "upload_branding_logo_api_admin_branding_logo_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_branding_logo_api_admin_branding_logo_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingLogoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Branding Logo",
+        "operationId": "delete_branding_logo_api_admin_branding_logo_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingLogoDeleteResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/backups/files": {
       "get": {
         "summary": "Get Backup Files",
@@ -3047,6 +3392,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BackupFilesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove All Backup Files",
+        "operationId": "remove_all_backup_files_api_admin_backups_files_delete",
+        "parameters": [
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Confirm"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "db",
+                    "objects",
+                    "config"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupDeleteAllResponse"
                 }
               }
             }
@@ -3216,6 +3620,78 @@
       "post": {
         "summary": "Run Backup All",
         "operationId": "run_backup_all_api_admin_backups_run_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupRunAllResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/schedule": {
+      "get": {
+        "summary": "Get Backup Schedule Settings",
+        "operationId": "get_backup_schedule_settings_api_admin_backups_schedule_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupScheduleSettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Upsert Backup Schedule Settings",
+        "operationId": "upsert_backup_schedule_settings_api_admin_backups_schedule_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupScheduleSettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupScheduleSettingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/backups/schedule/run-now": {
+      "post": {
+        "summary": "Run Backup Schedule Now",
+        "operationId": "run_backup_schedule_now_api_admin_backups_schedule_run_now_post",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4856,6 +5332,11 @@
             "title": "Lockout Seconds",
             "default": 900
           },
+          "auto_login_days": {
+            "type": "integer",
+            "title": "Auto Login Days",
+            "default": 7
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -4987,6 +5468,50 @@
           "rule_version_id"
         ],
         "title": "BackfillRequest"
+      },
+      "BackupDeleteAllResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "deleted_total": {
+            "type": "integer",
+            "title": "Deleted Total"
+          },
+          "deleted_meta_total": {
+            "type": "integer",
+            "title": "Deleted Meta Total"
+          },
+          "deleted_by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Deleted By Kind"
+          },
+          "meta_deleted_by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Meta Deleted By Kind"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "deleted_total",
+          "deleted_meta_total"
+        ],
+        "title": "BackupDeleteAllResponse"
       },
       "BackupDeleteResponse": {
         "properties": {
@@ -5337,6 +5862,138 @@
           "created_at"
         ],
         "title": "BackupRunResponse"
+      },
+      "BackupScheduleSettingsResponse": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": "default"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "interval_days": {
+            "type": "integer",
+            "title": "Interval Days",
+            "default": 1
+          },
+          "run_time": {
+            "type": "string",
+            "title": "Run Time",
+            "default": "02:00"
+          },
+          "schedule_timezone": {
+            "type": "string",
+            "title": "Schedule Timezone",
+            "default": "UTC"
+          },
+          "target_dir": {
+            "type": "string",
+            "title": "Target Dir",
+            "default": "scheduled"
+          },
+          "backup_export_root": {
+            "type": "string",
+            "title": "Backup Export Root"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_output_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Output Dir"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "backup_export_root"
+        ],
+        "title": "BackupScheduleSettingsResponse"
+      },
+      "BackupScheduleSettingsUpdateRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "interval_days": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Interval Days",
+            "default": 1
+          },
+          "run_time": {
+            "type": "string",
+            "maxLength": 5,
+            "minLength": 5,
+            "title": "Run Time",
+            "default": "02:00"
+          },
+          "target_dir": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Target Dir",
+            "default": "scheduled"
+          }
+        },
+        "type": "object",
+        "title": "BackupScheduleSettingsUpdateRequest"
       },
       "Body_add_document_files_api_documents__id__files_post": {
         "properties": {
@@ -5741,6 +6398,129 @@
         ],
         "title": "Body_upload_and_restore_backup_objects_api_admin_backups_upload_and_restore_objects_post"
       },
+      "Body_upload_branding_logo_api_admin_branding_logo_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_branding_logo_api_admin_branding_logo_post"
+      },
+      "BrandingLogoDeleteResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "removed": {
+            "type": "boolean",
+            "title": "Removed"
+          },
+          "previous_file_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous File Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "removed"
+        ],
+        "title": "BrandingLogoDeleteResponse"
+      },
+      "BrandingLogoResponse": {
+        "properties": {
+          "exists": {
+            "type": "boolean",
+            "title": "Exists",
+            "default": false
+          },
+          "logo_file_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo File Id"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "title": "BrandingLogoResponse"
+      },
       "ChangePasswordRequest": {
         "properties": {
           "current_password": {
@@ -5932,6 +6712,29 @@
             "type": "string",
             "title": "Category"
           },
+          "first_file_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First File Id"
+          },
+          "first_file_extension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First File Extension"
+          },
           "event_date": {
             "anyOf": [
               {
@@ -6034,6 +6837,294 @@
           "generated_at"
         ],
         "title": "DashboardSummaryResponse"
+      },
+      "DashboardTaskCreateRequest": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Category"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 220,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled At"
+          },
+          "all_day": {
+            "type": "boolean",
+            "title": "All Day",
+            "default": false
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 220
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "title",
+          "scheduled_at"
+        ],
+        "title": "DashboardTaskCreateRequest"
+      },
+      "DashboardTaskItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled At"
+          },
+          "all_day": {
+            "type": "boolean",
+            "title": "All Day",
+            "default": false
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "title",
+          "scheduled_at"
+        ],
+        "title": "DashboardTaskItem"
+      },
+      "DashboardTaskListResponse": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardTaskItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "generated_at"
+        ],
+        "title": "DashboardTaskListResponse"
+      },
+      "DashboardTaskSettingsResponse": {
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "category_colors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Category Colors"
+          },
+          "allow_all_day": {
+            "type": "boolean",
+            "title": "Allow All Day",
+            "default": true
+          },
+          "use_location": {
+            "type": "boolean",
+            "title": "Use Location",
+            "default": true
+          },
+          "use_comment": {
+            "type": "boolean",
+            "title": "Use Comment",
+            "default": true
+          },
+          "default_time": {
+            "type": "string",
+            "title": "Default Time",
+            "default": "09:00"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at"
+        ],
+        "title": "DashboardTaskSettingsResponse"
+      },
+      "DashboardTaskSettingsUpdateRequest": {
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Categories"
+          },
+          "category_colors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Category Colors"
+          },
+          "allow_all_day": {
+            "type": "boolean",
+            "title": "Allow All Day",
+            "default": true
+          },
+          "use_location": {
+            "type": "boolean",
+            "title": "Use Location",
+            "default": true
+          },
+          "use_comment": {
+            "type": "boolean",
+            "title": "Use Comment",
+            "default": true
+          },
+          "default_time": {
+            "type": "string",
+            "maxLength": 5,
+            "minLength": 5,
+            "title": "Default Time",
+            "default": "09:00"
+          }
+        },
+        "type": "object",
+        "title": "DashboardTaskSettingsUpdateRequest"
+      },
+      "DashboardTaskUpdateRequest": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Category"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 220,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scheduled At"
+          },
+          "all_day": {
+            "type": "boolean",
+            "title": "All Day",
+            "default": false
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 220
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "title",
+          "scheduled_at"
+        ],
+        "title": "DashboardTaskUpdateRequest"
       },
       "DeleteUserResponse": {
         "properties": {
@@ -6293,6 +7384,13 @@
               }
             ],
             "title": "Category"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categories"
           },
           "event_date": {
             "anyOf": [
@@ -6777,6 +7875,20 @@
               }
             ],
             "title": "Category Name"
+          },
+          "category_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Names"
           },
           "event_date": {
             "anyOf": [
@@ -7662,6 +8774,11 @@
           "password": {
             "type": "string",
             "title": "Password"
+          },
+          "remember_me": {
+            "type": "boolean",
+            "title": "Remember Me",
+            "default": false
           }
         },
         "type": "object",
@@ -7680,12 +8797,23 @@
             "type": "string",
             "format": "date-time",
             "title": "Logged In At"
+          },
+          "session_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Session Expires At"
+          },
+          "remember_me": {
+            "type": "boolean",
+            "title": "Remember Me",
+            "default": false
           }
         },
         "type": "object",
         "required": [
           "user",
-          "logged_in_at"
+          "logged_in_at",
+          "session_expires_at"
         ],
         "title": "LoginResponse"
       },
@@ -7770,6 +8898,13 @@
               }
             ],
             "title": "Category Name"
+          },
+          "category_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Category Names"
           },
           "event_date": {
             "anyOf": [
@@ -9465,13 +10600,20 @@
             "maximum": 86400.0,
             "minimum": 60.0,
             "title": "Lockout Seconds"
+          },
+          "auto_login_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Auto Login Days"
           }
         },
         "type": "object",
         "required": [
           "password_min_length",
           "max_failed_attempts",
-          "lockout_seconds"
+          "lockout_seconds",
+          "auto_login_days"
         ],
         "title": "UpdateAuthSecurityPolicyRequest"
       },

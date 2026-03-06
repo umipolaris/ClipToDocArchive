@@ -55,6 +55,11 @@ class UserRole(str, enum.Enum):
     VIEWER = "VIEWER"
 
 
+class DashboardTaskKind(str, enum.Enum):
+    TODO = "TODO"
+    MEETING = "MEETING"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -83,6 +88,69 @@ class SecurityPolicy(Base):
     require_special: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     max_failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     lockout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=900)
+    auto_login_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class DashboardTask(Base):
+    __tablename__ = "dashboard_tasks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kind: Mapped[DashboardTaskKind] = mapped_column(
+        Enum(DashboardTaskKind, name="dashboard_task_kind"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(80), nullable=False, default="할일")
+    title: Mapped[str] = mapped_column(String(220), nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    all_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    location: Mapped[str | None] = mapped_column(String(220))
+    comment: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class DashboardTaskSetting(Base):
+    __tablename__ = "dashboard_task_settings"
+
+    scope: Mapped[str] = mapped_column(String(32), primary_key=True, default="default")
+    categories_json: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    category_colors_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    allow_all_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    use_location: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    use_comment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    default_time: Mapped[str] = mapped_column(String(5), nullable=False, default="09:00")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class BrandingSetting(Base):
+    __tablename__ = "branding_settings"
+
+    scope: Mapped[str] = mapped_column(String(32), primary_key=True, default="default")
+    logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("files.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class BackupScheduleSetting(Base):
+    __tablename__ = "backup_schedule_settings"
+
+    scope: Mapped[str] = mapped_column(String(32), primary_key=True, default="default")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    interval_days: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    run_time: Mapped[str] = mapped_column(String(5), nullable=False, default="02:00")
+    target_dir: Mapped[str] = mapped_column(String(255), nullable=False, default="scheduled")
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_status: Mapped[str | None] = mapped_column(String(16))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_output_dir: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -235,6 +303,20 @@ class DocumentTag(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
+class DocumentCategory(Base):
+    __tablename__ = "document_categories"
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
 class DocumentComment(Base):
     __tablename__ = "document_comments"
 
@@ -323,6 +405,7 @@ class SavedFilter(Base):
 Index("idx_documents_event_date_desc", Document.event_date.desc())
 Index("idx_documents_category_event_date", Document.category_id, Document.event_date.desc())
 Index("idx_documents_search_vector_gin", Document.search_vector, postgresql_using="gin")
+Index("idx_document_categories_category_document", DocumentCategory.category_id, DocumentCategory.document_id)
 Index("idx_document_comments_document_created", DocumentComment.document_id, DocumentComment.created_at.desc())
 Index(
     "uq_documents_source_ref_telegram",
@@ -339,3 +422,4 @@ Index(
 Index("idx_ingest_jobs_state_received_at", IngestJob.state, IngestJob.received_at.desc())
 Index("idx_ingest_events_job_occurred", IngestEvent.ingest_job_id, IngestEvent.occurred_at.desc())
 Index("idx_audit_logs_target", AuditLog.target_type, AuditLog.target_id, AuditLog.created_at.desc())
+Index("idx_backup_schedule_settings_enabled", BackupScheduleSetting.enabled, BackupScheduleSetting.updated_at.desc())

@@ -38,7 +38,7 @@ export function MainShell({ children }: { children: React.ReactNode }) {
               aria-label="메뉴 닫기"
             />
             <div className="relative h-full w-fit">
-              <SidebarNav onNavigate={() => setMenuOpen(false)} className="h-full w-72 shadow-2xl" />
+              <SidebarNav onNavigate={() => setMenuOpen(false)} className="h-full w-72 pt-10 shadow-2xl" />
               <button
                 className="absolute right-3 top-3 inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 hover:bg-stone-100"
                 onClick={() => setMenuOpen(false)}

@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     session_secret: str = "change-me"
     session_cookie_name: str = "archive_session"
     session_max_age_seconds: int = 60 * 60 * 8
+    session_cookie_max_age_seconds: int = 60 * 60 * 24 * 366
     session_https_only: bool = False
     session_same_site: str = "lax"
     read_only_mode: bool = False
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     password_min_length: int = 10
     auth_max_failed_attempts: int = 5
     auth_lockout_seconds: int = 900
+    auth_auto_login_days: int = 7
 
     openclaw_callback_url: str = "http://openclaw:8080/callback/ingest"
     openclaw_notify_enabled: bool = False
@@ -54,8 +56,10 @@ class Settings(BaseSettings):
     meili_timeout_seconds: float = 3.0
 
     backup_root: str = "/backup"
+    backup_export_root: str = "/backup-export"
     backup_config_root: str = "/config"
     backup_retention_days: int = 30
+    backup_schedule_timezone: str = "Asia/Seoul"
 
 
 @lru_cache(maxsize=1)

@@ -19,6 +19,7 @@ export function LoginForm() {
 
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -50,7 +51,7 @@ export function LoginForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, remember_me: rememberMe }),
       });
 
       if (!res.ok) {
@@ -105,6 +106,11 @@ export function LoginForm() {
           required
         />
       </div>
+
+      <label className="inline-flex items-center gap-2 text-sm text-stone-700">
+        <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+        자동 로그인
+      </label>
 
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
 

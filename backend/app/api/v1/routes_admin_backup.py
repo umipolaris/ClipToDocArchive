@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File as UploadFormFile, Form, HTTPException, Query, Request, UploadFile
@@ -12,18 +12,32 @@ from app.core.auth import CurrentUser, require_roles
 from app.core.config import get_settings
 from app.db.models import (
     AuditLog,
+    BackupScheduleSetting,
+    BrandingSetting,
+    Category,
+    DashboardTask,
+    DashboardTaskSetting,
     Document,
+    DocumentCategory,
     DocumentComment,
     DocumentFile,
     DocumentTag,
     DocumentVersion,
     File as StoredFile,
+    IngestEvent,
+    IngestJob,
+    RuleVersion,
+    Ruleset,
+    SavedFilter,
+    SecurityPolicy,
+    Tag,
     User,
     UserRole,
 )
 from app.db.session import get_db
 from app.db.session import SessionLocal
 from app.schemas.admin_backup import (
+    BackupDeleteAllResponse,
     BackupDeleteResponse,
     BackupFilesResponse,
     BackupRestoreConfigRequest,
@@ -34,11 +48,14 @@ from app.schemas.admin_backup import (
     BackupRestoreObjectsResponse,
     BackupRunAllResponse,
     BackupRunResponse,
+    BackupScheduleSettingsResponse,
+    BackupScheduleSettingsUpdateRequest,
 )
 from app.services.backup_service import (
     BackupKind,
     ConfigRestoreMode,
     create_config_backup,
+    create_full_backup_and_copy,
     create_db_backup,
     create_objects_backup,
     delete_backup_file,
@@ -47,6 +64,7 @@ from app.services.backup_service import (
     restore_config_backup,
     restore_db_backup,
     restore_objects_backup,
+    resolve_backup_export_dir,
     promote_restored_db,
     store_uploaded_backup,
 )
@@ -212,17 +230,42 @@ def _create_backup_for_kind(kind: BackupKind) -> BackupRunResponse:
     )
 
 
+def _marker_count(db: Session, model) -> int:  # type: ignore[no-untyped-def]
+    return int(db.execute(select(func.count()).select_from(model)).scalar_one() or 0)
+
+
+def _marker_max_updated_at(db: Session, model) -> str:  # type: ignore[no-untyped-def]
+    return str(db.execute(select(func.max(model.updated_at))).scalar_one() or "")
+
+
 def _capture_consistency_marker(db: Session) -> dict[str, int | str | None]:
-    return {
-        "documents_count": int(db.execute(select(func.count()).select_from(Document)).scalar_one() or 0),
-        "documents_max_updated_at": str(db.execute(select(func.max(Document.updated_at))).scalar_one() or ""),
-        "files_count": int(db.execute(select(func.count()).select_from(StoredFile)).scalar_one() or 0),
-        "files_max_updated_at": str(db.execute(select(func.max(StoredFile.updated_at))).scalar_one() or ""),
-        "document_versions_count": int(db.execute(select(func.count()).select_from(DocumentVersion)).scalar_one() or 0),
-        "document_files_count": int(db.execute(select(func.count()).select_from(DocumentFile)).scalar_one() or 0),
-        "document_tags_count": int(db.execute(select(func.count()).select_from(DocumentTag)).scalar_one() or 0),
-        "document_comments_count": int(db.execute(select(func.count()).select_from(DocumentComment)).scalar_one() or 0),
-    }
+    tracked_models = [
+        ("documents", Document, True),
+        ("files", StoredFile, True),
+        ("document_versions", DocumentVersion, True),
+        ("document_files", DocumentFile, True),
+        ("document_categories", DocumentCategory, True),
+        ("document_tags", DocumentTag, True),
+        ("document_comments", DocumentComment, True),
+        ("dashboard_tasks", DashboardTask, True),
+        ("dashboard_task_settings", DashboardTaskSetting, True),
+        ("security_policies", SecurityPolicy, True),
+        ("rulesets", Ruleset, True),
+        ("rule_versions", RuleVersion, True),
+        ("categories", Category, True),
+        ("tags", Tag, True),
+        ("saved_filters", SavedFilter, True),
+        ("ingest_jobs", IngestJob, True),
+        ("ingest_events", IngestEvent, True),
+        ("branding_settings", BrandingSetting, True),
+        ("backup_schedule_settings", BackupScheduleSetting, True),
+    ]
+    marker: dict[str, int | str | None] = {}
+    for prefix, model, include_max_updated in tracked_models:
+        marker[f"{prefix}_count"] = _marker_count(db, model)
+        if include_max_updated:
+            marker[f"{prefix}_max_updated_at"] = _marker_max_updated_at(db, model)
+    return marker
 
 
 def _safe_cleanup_artifacts(settings, artifacts: list[tuple[BackupKind, str]]) -> None:  # type: ignore[no-untyped-def]
@@ -238,6 +281,50 @@ def _cleanup_uploaded_artifact(settings, *, kind: BackupKind, filename: str) -> 
         delete_backup_file(settings, kind, filename)
     except Exception:  # noqa: BLE001
         pass
+
+
+def _normalize_run_time_text(value: str) -> str:
+    raw = (value or "").strip()
+    try:
+        parsed = datetime.strptime(raw, "%H:%M")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="run_time must be HH:MM (24h)") from exc
+    return parsed.strftime("%H:%M")
+
+
+def _get_or_create_backup_schedule(db: Session, *, created_by: UUID | None) -> BackupScheduleSetting:
+    row = db.get(BackupScheduleSetting, "default")
+    if row:
+        return row
+    row = BackupScheduleSetting(
+        scope="default",
+        enabled=False,
+        interval_days=1,
+        run_time="02:00",
+        target_dir="scheduled",
+        created_by=created_by,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _to_backup_schedule_response(row: BackupScheduleSetting, *, settings) -> BackupScheduleSettingsResponse:  # type: ignore[no-untyped-def]
+    return BackupScheduleSettingsResponse(
+        scope=row.scope,
+        enabled=bool(row.enabled),
+        interval_days=int(row.interval_days or 1),
+        run_time=row.run_time or "02:00",
+        schedule_timezone=(settings.backup_schedule_timezone or "UTC"),
+        target_dir=row.target_dir or "scheduled",
+        backup_export_root=str(settings.backup_export_root),
+        last_run_at=row.last_run_at,
+        last_status=row.last_status,
+        last_error=row.last_error,
+        last_output_dir=row.last_output_dir,
+        updated_at=row.updated_at,
+    )
 
 
 @router.get(
@@ -320,6 +407,74 @@ def remove_backup_file(
     return result
 
 
+@router.delete("/admin/backups/files", response_model=BackupDeleteAllResponse)
+def remove_all_backup_files(
+    confirm: bool = Query(False),
+    kind: BackupKind | None = Query(None),
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> BackupDeleteAllResponse:
+    if not confirm:
+        raise HTTPException(status_code=400, detail="confirm=true required")
+
+    settings = get_settings()
+    targets: list[BackupKind] = [kind] if kind else ["db", "objects", "config"]
+    deleted_by_kind: dict[str, int] = {}
+    meta_deleted_by_kind: dict[str, int] = {}
+    errors: list[str] = []
+
+    for target_kind in targets:
+        deleted = 0
+        meta_deleted = 0
+        # Loop in batches so all files can be removed even when count > list limit.
+        for _ in range(1000):
+            try:
+                rows = list_backup_files(settings, target_kind, limit=500)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{target_kind}: list failed: {exc}")
+                break
+            if not rows:
+                break
+            for row in rows:
+                try:
+                    _, meta_removed = delete_backup_file(settings, target_kind, row.filename)
+                    deleted += 1
+                    if meta_removed:
+                        meta_deleted += 1
+                except FileNotFoundError:
+                    continue
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"{target_kind}/{row.filename}: {exc}")
+            if len(rows) < 500:
+                break
+
+        deleted_by_kind[target_kind] = deleted
+        meta_deleted_by_kind[target_kind] = meta_deleted
+
+    deleted_total = sum(deleted_by_kind.values())
+    deleted_meta_total = sum(meta_deleted_by_kind.values())
+    status = "ok" if not errors else "partial"
+    result = BackupDeleteAllResponse(
+        status=status,
+        deleted_total=deleted_total,
+        deleted_meta_total=deleted_meta_total,
+        deleted_by_kind=deleted_by_kind,
+        meta_deleted_by_kind=meta_deleted_by_kind,
+        errors=errors[:100],
+    )
+
+    db.add(
+        AuditLog(
+            actor_user_id=current_user.id,
+            action="BACKUP_DELETE_ALL_FILES",
+            target_type="backup",
+            after_json=result.model_dump(mode="json"),
+        )
+    )
+    db.commit()
+    return result
+
+
 @router.post("/admin/backups/run/{kind}", response_model=BackupRunResponse)
 def run_backup(
     kind: BackupKind,
@@ -382,6 +537,127 @@ def run_backup_all(
     )
     db.commit()
     return BackupRunAllResponse(items=results)
+
+
+@router.get("/admin/backups/schedule", response_model=BackupScheduleSettingsResponse)
+def get_backup_schedule_settings(
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> BackupScheduleSettingsResponse:
+    settings = get_settings()
+    row = _get_or_create_backup_schedule(db, created_by=current_user.id)
+    return _to_backup_schedule_response(row, settings=settings)
+
+
+@router.post("/admin/backups/schedule", response_model=BackupScheduleSettingsResponse)
+def upsert_backup_schedule_settings(
+    req: BackupScheduleSettingsUpdateRequest,
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> BackupScheduleSettingsResponse:
+    settings = get_settings()
+    run_time = _normalize_run_time_text(req.run_time)
+    if not (1 <= int(req.interval_days) <= 60):
+        raise HTTPException(status_code=400, detail="interval_days must be between 1 and 60")
+
+    target_dir = (req.target_dir or "").strip() or "scheduled"
+    try:
+        # Validate that the configured path can be resolved and created.
+        resolve_backup_export_dir(settings, target_dir=target_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"target_dir validation failed: {exc}") from exc
+
+    row = _get_or_create_backup_schedule(db, created_by=current_user.id)
+    prev_enabled = bool(row.enabled)
+    prev_interval_days = int(row.interval_days or 1)
+    prev_run_time = row.run_time or "02:00"
+    prev_target_dir = row.target_dir or "scheduled"
+
+    row.enabled = bool(req.enabled)
+    row.interval_days = int(req.interval_days)
+    row.run_time = run_time
+    row.target_dir = target_dir
+    if (
+        row.enabled
+        and (
+            prev_enabled != row.enabled
+            or prev_interval_days != row.interval_days
+            or prev_run_time != row.run_time
+            or prev_target_dir != row.target_dir
+        )
+    ):
+        # Restart schedule window when admin changes the schedule settings.
+        row.last_run_at = None
+        row.last_status = None
+        row.last_error = None
+        row.last_output_dir = None
+    row.updated_at = datetime.now(tz=timezone.utc)
+    db.add(row)
+    db.add(
+        AuditLog(
+            actor_user_id=current_user.id,
+            action="BACKUP_SCHEDULE_UPDATE",
+            target_type="backup_schedule",
+            after_json={
+                "enabled": bool(row.enabled),
+                "interval_days": row.interval_days,
+                "run_time": row.run_time,
+                "target_dir": row.target_dir,
+                "backup_export_root": settings.backup_export_root,
+            },
+        )
+    )
+    db.commit()
+    db.refresh(row)
+    return _to_backup_schedule_response(row, settings=settings)
+
+
+@router.post("/admin/backups/schedule/run-now", response_model=BackupRunAllResponse)
+def run_backup_schedule_now(
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> BackupRunAllResponse:
+    settings = get_settings()
+    row = _get_or_create_backup_schedule(db, created_by=current_user.id)
+    try:
+        out = create_full_backup_and_copy(settings, target_dir=row.target_dir or "scheduled")
+    except Exception as exc:  # noqa: BLE001
+        row.last_status = "FAILED"
+        row.last_error = str(exc)
+        row.updated_at = datetime.now(tz=timezone.utc)
+        db.add(row)
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"scheduled backup run failed: {exc}") from exc
+
+    row.last_run_at = datetime.now(tz=timezone.utc)
+    row.last_status = "SUCCESS"
+    row.last_error = None
+    row.last_output_dir = out.output_dir
+    row.updated_at = datetime.now(tz=timezone.utc)
+    db.add(row)
+    db.add(
+        AuditLog(
+            actor_user_id=current_user.id,
+            action="BACKUP_SCHEDULE_RUN_NOW",
+            target_type="backup_schedule",
+            after_json={"output_dir": out.output_dir, "items": out.items},
+        )
+    )
+    db.commit()
+
+    items = [
+        BackupRunResponse(
+            kind=item["kind"],  # type: ignore[arg-type]
+            filename=str(item["filename"]),
+            size_bytes=int(item["size_bytes"] or 0),
+            created_at=datetime.now(tz=timezone.utc),
+            sha256=(str(item["sha256"]) if item.get("sha256") else None),
+        )
+        for item in out.items
+    ]
+    return BackupRunAllResponse(items=items)
 
 
 @router.post("/admin/backups/restore/db", response_model=BackupRestoreDbResponse)

@@ -9,7 +9,7 @@ celery_app = Celery(
     "doc_archive",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.worker.tasks_ingest", "app.worker.tasks_search", "app.worker.tasks_reports"],
+    include=["app.worker.tasks_ingest", "app.worker.tasks_search", "app.worker.tasks_reports", "app.worker.tasks_backup"],
 )
 
 celery_app.conf.update(
@@ -28,12 +28,17 @@ celery_app.conf.update(
         "app.worker.tasks_search.delete_document_index_task": {"queue": "search"},
         "app.worker.tasks_search.rebuild_documents_index_task": {"queue": "search"},
         "app.worker.tasks_reports.generate_weekly_ops_report_task": {"queue": "reports"},
+        "app.worker.tasks_backup.run_scheduled_full_backup_task": {"queue": "reports"},
     },
     beat_schedule={
         "weekly-ops-report": {
             "task": "app.worker.tasks_reports.generate_weekly_ops_report_task",
             "schedule": crontab(minute=15, hour=0, day_of_week="mon"),
             "kwargs": {"days": 7},
-        }
+        },
+        "scheduled-full-backup-check": {
+            "task": "app.worker.tasks_backup.run_scheduled_full_backup_task",
+            "schedule": crontab(minute="*"),
+        },
     },
 )

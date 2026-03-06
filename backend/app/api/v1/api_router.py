@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.routes_archive import router as archive_router
 from app.api.v1.routes_admin_backup import router as admin_backup_router
 from app.api.v1.routes_admin_logs import router as admin_logs_router
+from app.api.v1.routes_branding import router as branding_router
 from app.api.v1.routes_documents import router as documents_router
 from app.api.v1.routes_dashboard import router as dashboard_router
 from app.api.v1.routes_auth import router as auth_router
@@ -25,6 +26,7 @@ api_router.include_router(mindmap_router)
 api_router.include_router(review_router)
 api_router.include_router(rules_router)
 api_router.include_router(saved_filters_router)
+api_router.include_router(branding_router)
 api_router.include_router(admin_backup_router)
 api_router.include_router(admin_logs_router)
 api_router.include_router(health_router)

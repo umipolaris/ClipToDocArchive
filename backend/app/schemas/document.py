@@ -97,6 +97,7 @@ class DocumentDetailResponse(BaseModel):
     summary: str
     category_id: UUID | None
     category: str | None = None
+    categories: list[str] = Field(default_factory=list)
     event_date: date | None
     ingested_at: datetime
     is_pinned: bool = False
@@ -165,6 +166,7 @@ class DocumentUpdateRequest(BaseModel):
     summary: str | None = None
     category_id: UUID | None = None
     category_name: str | None = None
+    category_names: list[str] | None = None
     event_date: date | None = None
     is_pinned: bool | None = None
     tags: list[str] | None = None
@@ -183,6 +185,7 @@ class ManualPostCreateRequest(BaseModel):
     summary: str | None = None
     category_id: UUID | None = None
     category_name: str | None = None
+    category_names: list[str] = Field(default_factory=list)
     event_date: date | None = None
     is_pinned: bool = False
     tags: list[str] = Field(default_factory=list)

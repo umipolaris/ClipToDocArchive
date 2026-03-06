@@ -55,6 +55,7 @@ type SecurityPolicy = {
   require_special: boolean;
   max_failed_attempts: number;
   lockout_seconds: number;
+  auto_login_days: number;
   updated_at: string | null;
 };
 
@@ -69,8 +70,23 @@ const DEFAULT_SECURITY_POLICY: SecurityPolicy = {
   require_special: true,
   max_failed_attempts: 5,
   lockout_seconds: 900,
+  auto_login_days: 7,
   updated_at: null,
 };
+
+function normalizeSecurityPolicy(input: Partial<SecurityPolicy> | null | undefined): SecurityPolicy {
+  const merged = {
+    ...DEFAULT_SECURITY_POLICY,
+    ...(input || {}),
+  } as SecurityPolicy;
+  return {
+    ...merged,
+    auto_login_days:
+      Number.isFinite(merged.auto_login_days) && merged.auto_login_days >= 1 && merged.auto_login_days <= 365
+        ? Math.round(merged.auto_login_days)
+        : 7,
+  };
+}
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -95,7 +111,7 @@ function formatPolicySummary(policy: SecurityPolicy): string {
   if (policy.require_lowercase) rules.push("소문자");
   if (policy.require_digit) rules.push("숫자");
   if (policy.require_special) rules.push("특수문자");
-  return `비밀번호 정책: ${rules.join(", ")} 포함 | 로그인 실패 ${policy.max_failed_attempts}회 시 ${policy.lockout_seconds}초 잠금`;
+  return `비밀번호 정책: ${rules.join(", ")} 포함 | 로그인 실패 ${policy.max_failed_attempts}회 시 ${policy.lockout_seconds}초 잠금 | 자동 로그인 ${policy.auto_login_days}일`;
 }
 
 export function AdminUserManager() {
@@ -130,8 +146,9 @@ export function AdminUserManager() {
     setPolicyLoading(true);
     try {
       const res = await apiGet<SecurityPolicy>("/admin/security-policy");
-      setPolicy(res);
-      setPolicyDraft(res);
+      const normalized = normalizeSecurityPolicy(res);
+      setPolicy(normalized);
+      setPolicyDraft(normalized);
     } catch (err) {
       setError(err instanceof Error ? err.message : "보안 정책 로드 실패");
       setPolicy(DEFAULT_SECURITY_POLICY);
@@ -285,6 +302,10 @@ export function AdminUserManager() {
       setError("잠금 시간은 60초 이상이어야 합니다.");
       return;
     }
+    if (policyDraft.auto_login_days < 1 || policyDraft.auto_login_days > 365) {
+      setError("자동 로그인 기간은 1~365일 사이여야 합니다.");
+      return;
+    }
 
     setPolicySaving(true);
     setError("");
@@ -301,10 +322,12 @@ export function AdminUserManager() {
           require_special: policyDraft.require_special,
           max_failed_attempts: policyDraft.max_failed_attempts,
           lockout_seconds: policyDraft.lockout_seconds,
+          auto_login_days: policyDraft.auto_login_days,
         }),
       });
-      setPolicy(saved);
-      setPolicyDraft(saved);
+      const normalized = normalizeSecurityPolicy(saved);
+      setPolicy(normalized);
+      setPolicyDraft(normalized);
       setMessage("보안 정책 저장 완료");
     } catch (err) {
       setError(err instanceof Error ? err.message : "보안 정책 저장 실패");
@@ -378,7 +401,7 @@ export function AdminUserManager() {
           <p className="text-sm text-stone-600">보안 정책 로딩 중...</p>
         ) : (
           <div className="space-y-2">
-            <div className="grid gap-2 md:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-4">
               <label className="space-y-1 text-xs">
                 <span className="text-stone-600">최소 길이</span>
                 <input
@@ -423,6 +446,22 @@ export function AdminUserManager() {
                     setPolicyDraft((prev) => ({
                       ...prev,
                       lockout_seconds: Number(e.target.value) || 0,
+                    }))
+                  }
+                />
+              </label>
+              <label className="space-y-1 text-xs">
+                <span className="text-stone-600">자동 로그인 기간(일)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
+                  value={policyDraft.auto_login_days}
+                  onChange={(e) =>
+                    setPolicyDraft((prev) => ({
+                      ...prev,
+                      auto_login_days: Number(e.target.value) || 0,
                     }))
                   }
                 />

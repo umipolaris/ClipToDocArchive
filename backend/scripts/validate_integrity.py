@@ -5,16 +5,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import (
+    BrandingSetting,
     Category,
     Document,
     DocumentComment,
@@ -357,6 +363,42 @@ def check_orphans(db: Session, report: IntegrityReport, max_samples: int) -> Non
         report.add("ORPHAN_INGEST_EVENT_JOB", SEV_ERROR, "ingest_events.ingest_job_id가 유효하지 않습니다.", count, samples)
 
 
+def check_unlinked_files(db: Session, report: IntegrityReport, max_samples: int) -> None:
+    unlinked_count_stmt = (
+        select(func.count())
+        .select_from(File)
+        .outerjoin(DocumentFile, DocumentFile.file_id == File.id)
+        .outerjoin(BrandingSetting, BrandingSetting.logo_file_id == File.id)
+        .where(DocumentFile.file_id.is_(None), BrandingSetting.logo_file_id.is_(None))
+    )
+    unlinked_sample_stmt = (
+        select(File.id, File.original_filename, File.storage_backend, File.storage_key)
+        .select_from(File)
+        .outerjoin(DocumentFile, DocumentFile.file_id == File.id)
+        .outerjoin(BrandingSetting, BrandingSetting.logo_file_id == File.id)
+        .where(DocumentFile.file_id.is_(None), BrandingSetting.logo_file_id.is_(None))
+        .limit(max_samples)
+    )
+    count = int(db.execute(unlinked_count_stmt).scalar_one() or 0)
+    if count <= 0:
+        return
+    rows = db.execute(unlinked_sample_stmt).all()
+    samples = [
+        (
+            f"file_id={format_uuid_like(row.id)} "
+            f"name={row.original_filename} backend={row.storage_backend} key={row.storage_key}"
+        )
+        for row in rows
+    ]
+    report.add(
+        "UNLINKED_FILE_RECORD",
+        SEV_WARN,
+        "문서에 연결되지 않은 files 레코드가 있습니다. 필요 시 정리(cleanup)하세요.",
+        count,
+        samples,
+    )
+
+
 def check_document_versions(db: Session, report: IntegrityReport, max_samples: int) -> None:
     max_version_subq = (
         select(
@@ -598,6 +640,7 @@ def run_checks(db: Session, report: IntegrityReport, max_samples: int, storage_m
     report.row_counts = table_counts(db)
 
     check_orphans(db, report, max_samples)
+    check_unlinked_files(db, report, max_samples)
     check_document_versions(db, report, max_samples)
     check_checksum_and_source_ref(db, report, max_samples)
     check_storage_objects(db, report, storage_mode, storage_probe_limit, max_samples)

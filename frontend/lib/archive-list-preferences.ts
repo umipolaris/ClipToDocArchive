@@ -9,7 +9,9 @@ export type ArchiveListPreferences = {
 
 export const ARCHIVE_PREF_STORAGE_KEY = "archive-list-preferences.v1";
 
-export const ARCHIVE_COLUMN_ORDER_DEFAULT: ArchiveColumnKey[] = ["date", "title", "category", "tags", "file", "modified", "review"];
+const LEGACY_ARCHIVE_COLUMN_ORDER_DEFAULT: ArchiveColumnKey[] = ["date", "title", "category", "tags", "file", "modified", "review"];
+
+export const ARCHIVE_COLUMN_ORDER_DEFAULT: ArchiveColumnKey[] = ["date", "category", "title", "tags", "file", "modified", "review"];
 
 export const ARCHIVE_COLUMN_LABELS: Record<ArchiveColumnKey, string> = {
   date: "날짜",
@@ -62,7 +64,12 @@ function isArchiveColumnKey(value: unknown): value is ArchiveColumnKey {
   );
 }
 
-function normalizeVisibleColumns(input: unknown): ArchiveColumnKey[] {
+function isSameOrder(a: ArchiveColumnKey[], b: ArchiveColumnKey[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((value, idx) => value === b[idx]);
+}
+
+export function normalizeArchiveVisibleColumns(input: unknown): ArchiveColumnKey[] {
   if (!Array.isArray(input)) return ARCHIVE_COLUMN_ORDER_DEFAULT;
 
   const deduped: ArchiveColumnKey[] = [];
@@ -73,6 +80,9 @@ function normalizeVisibleColumns(input: unknown): ArchiveColumnKey[] {
   }
   if (!deduped.includes("title")) deduped.push("title");
   if (deduped.length === 0) return ARCHIVE_COLUMN_ORDER_DEFAULT;
+  if (isSameOrder(deduped, LEGACY_ARCHIVE_COLUMN_ORDER_DEFAULT)) {
+    return ARCHIVE_COLUMN_ORDER_DEFAULT;
+  }
   return deduped;
 }
 
@@ -83,7 +93,7 @@ export function normalizeArchiveListPreferences(input: unknown): ArchiveListPref
   const value = input as Partial<ArchiveListPreferences>;
   return {
     density: isArchiveDensity(value.density) ? value.density : DEFAULT_ARCHIVE_LIST_PREFERENCES.density,
-    visibleColumns: normalizeVisibleColumns(value.visibleColumns),
+    visibleColumns: normalizeArchiveVisibleColumns(value.visibleColumns),
   };
 }
 

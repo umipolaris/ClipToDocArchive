@@ -1,4 +1,9 @@
-import { type ArchiveColumnKey, type ArchiveListDensity } from "@/lib/archive-list-preferences";
+import {
+  ARCHIVE_COLUMN_ORDER_DEFAULT,
+  normalizeArchiveVisibleColumns,
+  type ArchiveColumnKey,
+  type ArchiveListDensity,
+} from "@/lib/archive-list-preferences";
 
 export type ArchiveViewPresetPayload = {
   category_filter: string;
@@ -45,7 +50,9 @@ function normalizePayload(input: Partial<ArchiveViewPresetPayload>): ArchiveView
     sort_order: typeof input.sort_order === "string" ? input.sort_order : "desc",
     page_size: Number.isInteger(input.page_size) && (input.page_size as number) > 0 ? (input.page_size as number) : 50,
     density: input.density === "compact" ? "compact" : "default",
-    visible_columns: Array.isArray(input.visible_columns) ? (input.visible_columns as ArchiveColumnKey[]) : ["date", "title", "category", "tags", "file", "modified", "review"],
+    visible_columns: normalizeArchiveVisibleColumns(
+      Array.isArray(input.visible_columns) ? (input.visible_columns as ArchiveColumnKey[]) : ARCHIVE_COLUMN_ORDER_DEFAULT,
+    ),
   };
 }
 

@@ -11,8 +11,11 @@ from app.core.config import get_settings
 from app.core.security import hash_password, validate_password_strength, verify_password
 from app.db.models import (
     AuditLog,
+    BackupScheduleSetting,
+    BrandingSetting,
     Category,
     Document,
+    DocumentCategory,
     DocumentFile,
     DocumentTag,
     DocumentVersion,
@@ -62,6 +65,7 @@ def _to_auth_policy_response(row: SecurityPolicy) -> AuthSecurityPolicy:
         require_special=row.require_special,
         max_failed_attempts=row.max_failed_attempts,
         lockout_seconds=row.lockout_seconds,
+        auto_login_days=row.auto_login_days,
         updated_at=row.updated_at,
     )
 
@@ -79,6 +83,7 @@ def _get_auth_policy(db: Session) -> AuthSecurityPolicy:
         require_special=True,
         max_failed_attempts=settings.auth_max_failed_attempts,
         lockout_seconds=settings.auth_lockout_seconds,
+        auto_login_days=settings.auth_auto_login_days,
         updated_at=None,
     )
 
@@ -116,6 +121,7 @@ def _nullify_user_refs(db: Session, user_id: UUID) -> dict[str, int]:
         ("documents.created_by", Document, Document.created_by),
         ("document_versions.created_by", DocumentVersion, DocumentVersion.created_by),
         ("document_files.created_by", DocumentFile, DocumentFile.created_by),
+        ("document_categories.created_by", DocumentCategory, DocumentCategory.created_by),
         ("document_tags.created_by", DocumentTag, DocumentTag.created_by),
         ("ingest_jobs.created_by", IngestJob, IngestJob.created_by),
         ("ingest_events.created_by", IngestEvent, IngestEvent.created_by),
@@ -123,6 +129,8 @@ def _nullify_user_refs(db: Session, user_id: UUID) -> dict[str, int]:
         ("audit_logs.actor_user_id", AuditLog, AuditLog.actor_user_id),
         ("saved_filters.created_by", SavedFilter, SavedFilter.created_by),
         ("security_policies.created_by", SecurityPolicy, SecurityPolicy.created_by),
+        ("branding_settings.created_by", BrandingSetting, BrandingSetting.created_by),
+        ("backup_schedule_settings.created_by", BackupScheduleSetting, BackupScheduleSetting.created_by),
     ]
 
     result: dict[str, int] = {}
@@ -181,18 +189,29 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)) ->
             action="AUTH_LOGIN",
             target_type="user",
             target_id=user.id,
-            after_json={"username": user.username, "role": user.role.value},
+            after_json={"username": user.username, "role": user.role.value, "remember_me": bool(req.remember_me)},
         )
     )
     db.commit()
 
+    session_ttl_seconds = (
+        int(policy.auto_login_days) * 24 * 60 * 60 if req.remember_me else int(settings.session_max_age_seconds)
+    )
+    session_ttl_seconds = max(60, session_ttl_seconds)
+    session_expires_at = now + timedelta(seconds=session_ttl_seconds)
+
     request.session["user_id"] = str(user.id)
     request.session["username"] = user.username
     request.session["role"] = user.role.value
+    request.session["issued_at"] = now.isoformat()
+    request.session["expires_at"] = session_expires_at.isoformat()
+    request.session["remember_me"] = bool(req.remember_me)
 
     return LoginResponse(
         user=AuthUser(id=str(user.id), username=user.username, role=user.role),
         logged_in_at=user.last_login_at,
+        session_expires_at=session_expires_at,
+        remember_me=bool(req.remember_me),
     )
 
 
@@ -253,6 +272,7 @@ def update_security_policy(
             require_special=True,
             max_failed_attempts=settings.auth_max_failed_attempts,
             lockout_seconds=settings.auth_lockout_seconds,
+            auto_login_days=settings.auth_auto_login_days,
             created_by=current_user.id,
         )
 
@@ -263,6 +283,7 @@ def update_security_policy(
     row.require_special = req.require_special
     row.max_failed_attempts = req.max_failed_attempts
     row.lockout_seconds = req.lockout_seconds
+    row.auto_login_days = req.auto_login_days
     row.updated_at = _now()
 
     db.add(row)

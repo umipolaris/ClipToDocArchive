@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiDelete, apiGet, apiPatch, apiPostForm, buildApiUrl } from "@/lib/api-client";
@@ -163,6 +163,7 @@ type DocumentDetailResponse = {
   summary: string;
   category_id: string | null;
   category: string | null;
+  categories?: string[];
   event_date: string | null;
   ingested_at: string;
   is_pinned: boolean;
@@ -218,6 +219,34 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function hashText(value: string): number {
+  let h = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    h = (h << 5) - h + value.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h);
+}
+
+function categoryBadgeStyle(category: string | null): CSSProperties {
+  if (!category?.trim()) {
+    return {
+      borderColor: "#d6d3d1",
+      backgroundColor: "#f5f5f4",
+      color: "#57534e",
+    };
+  }
+  const hash = hashText(category.trim().toLowerCase());
+  const hue = hash % 360;
+  const borderHue = (hue + 4) % 360;
+  const textHue = (hue + 2) % 360;
+  return {
+    borderColor: `hsl(${borderHue} 55% 72%)`,
+    backgroundColor: `hsl(${hue} 90% 96%)`,
+    color: `hsl(${textHue} 46% 30%)`,
+  };
 }
 
 function dateString(year: number, month: number, day: number): string {
@@ -358,8 +387,8 @@ export function ArchiveWorkspace() {
   const [editTitle, setEditTitle] = useState("");
   const [editDescriptionHtml, setEditDescriptionHtml] = useState("<p></p>");
   const [editSummary, setEditSummary] = useState("");
-  const [editCategoryName, setEditCategoryName] = useState("");
-  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [editCategoryNames, setEditCategoryNames] = useState<string[]>([]);
+  const [customCategoryName, setCustomCategoryName] = useState("");
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(true);
   const [categoryOptionsError, setCategoryOptionsError] = useState("");
@@ -766,8 +795,8 @@ export function ArchiveWorkspace() {
       setEditTitle("");
       setEditDescriptionHtml("<p></p>");
       setEditSummary("");
-      setEditCategoryName("");
-      setIsCustomCategory(false);
+      setEditCategoryNames([]);
+      setCustomCategoryName("");
       setEditEventDate("");
       setEditTags("");
       setEditIsPinned(false);
@@ -781,9 +810,15 @@ export function ArchiveWorkspace() {
     setEditTitle(detail.title);
     setEditDescriptionHtml(normalizeRichContentHtml(detail.description || ""));
     setEditSummary(detail.summary || "");
-    const initialCategory = detail.category ?? "";
-    setEditCategoryName(initialCategory);
-    setIsCustomCategory(Boolean(initialCategory));
+    const initialCategories = Array.from(
+      new Set(
+        (detail.categories && detail.categories.length > 0 ? detail.categories : detail.category ? [detail.category] : [])
+          .map((name) => name?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
+    setEditCategoryNames(initialCategories);
+    setCustomCategoryName("");
     setEditEventDate(detail.event_date ?? "");
     setEditTags(detail.tags.join(", "));
     setEditIsPinned(detail.is_pinned);
@@ -793,16 +828,6 @@ export function ArchiveWorkspace() {
     setVersionSnapshotError("");
     setSelectedVersionNo(null);
   }, [detail]);
-
-  useEffect(() => {
-    if (!editCategoryName.trim()) {
-      setIsCustomCategory(false);
-      return;
-    }
-    if (categoryOptions.includes(editCategoryName)) {
-      setIsCustomCategory(false);
-    }
-  }, [categoryOptions, editCategoryName]);
 
   const deleteDetailFile = async (fileId: string) => {
     if (!detail) return;
@@ -887,6 +912,28 @@ export function ArchiveWorkspace() {
     }
   };
 
+  const toggleCategorySelection = (categoryName: string) => {
+    const normalized = categoryName.trim();
+    if (!normalized) return;
+    setEditCategoryNames((prev) => {
+      if (prev.includes(normalized)) {
+        return prev.filter((name) => name !== normalized);
+      }
+      return [...prev, normalized];
+    });
+  };
+
+  const addCustomCategorySelection = () => {
+    const normalized = customCategoryName.trim();
+    if (!normalized) return;
+    setEditCategoryNames((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
+    setCustomCategoryName("");
+  };
+
+  const removeCategorySelection = (categoryName: string) => {
+    setEditCategoryNames((prev) => prev.filter((name) => name !== categoryName));
+  };
+
   const saveDetailDocument = async () => {
     if (!detail) return;
     if (!editTitle.trim()) {
@@ -902,7 +949,8 @@ export function ArchiveWorkspace() {
         title: editTitle.trim(),
         description: normalizeRichContentHtml(editDescriptionHtml),
         summary: editSummary,
-        category_name: editCategoryName.trim() || null,
+        category_name: editCategoryNames[0] || null,
+        category_names: editCategoryNames,
         event_date: editEventDate || null,
         tags: parseTagInput(editTags),
         is_pinned: editIsPinned,
@@ -925,7 +973,15 @@ export function ArchiveWorkspace() {
     setEditTitle(detail.title);
     setEditDescriptionHtml(normalizeRichContentHtml(detail.description || ""));
     setEditSummary(detail.summary || "");
-    setEditCategoryName(detail.category ?? "");
+    const initialCategories = Array.from(
+      new Set(
+        (detail.categories && detail.categories.length > 0 ? detail.categories : detail.category ? [detail.category] : [])
+          .map((name) => name?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
+    setEditCategoryNames(initialCategories);
+    setCustomCategoryName("");
     setEditEventDate(detail.event_date ?? "");
     setEditTags(detail.tags.join(", "));
     setEditIsPinned(detail.is_pinned);
@@ -1750,10 +1806,17 @@ export function ArchiveWorkspace() {
                         );
                       }
                       if (column === "category") {
+                        const categoryLabel = item.category || "미분류";
                         return (
-                          <span key={`${item.id}-category`} className="truncate">
-                            {item.category || "미분류"}
-                          </span>
+                          <div key={`${item.id}-category`} className="min-w-0">
+                            <span
+                              className="inline-flex max-w-full items-center rounded border px-1.5 py-0.5 text-[11px] font-semibold"
+                              style={categoryBadgeStyle(item.category)}
+                              title={categoryLabel}
+                            >
+                              <span className="truncate">{categoryLabel}</span>
+                            </span>
+                          </div>
                         );
                       }
                       if (column === "tags") {
@@ -1869,7 +1932,7 @@ export function ArchiveWorkspace() {
               <div className="space-y-1">
                 <p className="font-medium text-stone-900">{detail.title}</p>
                 <p className="text-xs text-stone-600">
-                  {detail.category || "미분류"} | 이벤트일 {formatDate(detail.event_date)} | 수집 {formatDateTime(detail.ingested_at)}
+                  {(detail.categories && detail.categories.length > 0 ? detail.categories.join(", ") : detail.category || "미분류")} | 이벤트일 {formatDate(detail.event_date)} | 수집 {formatDateTime(detail.ingested_at)}
                 </p>
                 <div className="flex flex-wrap items-center gap-1">
                   {detail.is_pinned ? (
@@ -2002,35 +2065,48 @@ export function ArchiveWorkspace() {
                         onChange={(e) => setEditTitle(e.target.value)}
                         placeholder="제목"
                       />
-                      <select
-                        className="w-full rounded border border-stone-300 px-2 py-1 text-xs"
-                        value={isCustomCategory ? "__custom__" : editCategoryName}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (value === "__custom__") {
-                            setIsCustomCategory(true);
-                            return;
-                          }
-                          setIsCustomCategory(false);
-                          setEditCategoryName(value);
-                        }}
-                      >
-                        <option value="">카테고리 선택</option>
-                        {categoryOptions.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                        <option value="__custom__">직접 입력</option>
-                      </select>
-                      {isCustomCategory ? (
-                        <input
-                          className="w-full rounded border border-stone-300 px-2 py-1 text-xs"
-                          value={editCategoryName}
-                          onChange={(e) => setEditCategoryName(e.target.value)}
-                          placeholder="신규 카테고리명"
-                        />
-                      ) : null}
+                      <div className="space-y-2 rounded border border-stone-200 p-2">
+                        <p className="text-[11px] font-semibold text-stone-700">카테고리(복수 선택 가능)</p>
+                        <div className="grid max-h-24 grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-x-2 gap-y-1 overflow-auto rounded border border-stone-200 bg-white p-2">
+                          {categoryOptions.map((name) => (
+                            <label key={name} className="flex min-w-0 items-center gap-2 text-[11px] text-stone-700">
+                              <input type="checkbox" checked={editCategoryNames.includes(name)} onChange={() => toggleCategorySelection(name)} />
+                              <span className="truncate">{name}</span>
+                            </label>
+                          ))}
+                          {categoryOptions.length === 0 ? <p className="text-[11px] text-stone-500">등록된 카테고리가 없습니다.</p> : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="w-full rounded border border-stone-300 px-2 py-1 text-xs"
+                            value={customCategoryName}
+                            onChange={(e) => setCustomCategoryName(e.target.value)}
+                            placeholder="신규 카테고리명"
+                          />
+                          <button
+                            type="button"
+                            className="rounded border border-stone-300 bg-white px-2 py-1 text-[11px] text-stone-700 hover:bg-stone-50"
+                            onClick={addCustomCategorySelection}
+                          >
+                            추가
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {editCategoryNames.length === 0 ? <span className="text-[11px] text-stone-500">선택된 카테고리 없음</span> : null}
+                          {editCategoryNames.map((name, idx) => (
+                            <button
+                              key={name}
+                              type="button"
+                              className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] ${idx === 0 ? "border-accent bg-accent/10 text-accent" : "border-stone-300 bg-white text-stone-700"}`}
+                              title={idx === 0 ? "기본 카테고리" : "보조 카테고리"}
+                              onClick={() => removeCategorySelection(name)}
+                            >
+                              <span>{name}</span>
+                              <span>×</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       {categoryOptionsLoading ? <p className="text-[11px] text-stone-500">카테고리 목록 로딩 중...</p> : null}
                       {categoryOptionsError ? <p className="text-[11px] text-amber-700">목록 로드 실패: {categoryOptionsError}</p> : null}
                       <input

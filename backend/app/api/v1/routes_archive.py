@@ -6,7 +6,7 @@ from sqlalchemy import Date, Integer, cast, extract, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser, require_roles
-from app.db.models import Category, Document, DocumentFile, DocumentTag, ReviewStatus, Tag, UserRole
+from app.db.models import Category, Document, DocumentCategory, DocumentFile, DocumentTag, ReviewStatus, Tag, UserRole
 from app.db.session import get_db
 from app.schemas.archive import (
     ArchiveCategoryNode,
@@ -66,23 +66,44 @@ def get_archive_tree(
     _: CurrentUser = Depends(require_roles(UserRole.VIEWER, UserRole.REVIEWER, UserRole.EDITOR, UserRole.ADMIN)),
     db: Session = Depends(get_db),
 ) -> ArchiveTreeResponse:
-    category_label = func.coalesce(Category.name, literal("미분류")).label("category")
     base_date = func.coalesce(Document.event_date, cast(Document.ingested_at, Date))
     year_col = cast(extract("year", base_date), Integer).label("year")
     month_col = cast(extract("month", base_date), Integer).label("month")
 
-    rows = db.execute(
+    categorized_rows = db.execute(
         select(
-            category_label,
+            Category.name.label("category"),
+            year_col,
+            month_col,
+            func.count(func.distinct(Document.id)).label("count"),
+        )
+        .select_from(Document)
+        .join(DocumentCategory, DocumentCategory.document_id == Document.id)
+        .join(Category, Category.id == DocumentCategory.category_id)
+        .group_by(Category.name, year_col, month_col)
+        .order_by(Category.name.asc(), year_col.desc(), month_col.desc())
+    ).all()
+
+    uncategorized_exists = (
+        select(1)
+        .select_from(DocumentCategory)
+        .where(DocumentCategory.document_id == Document.id)
+        .exists()
+    )
+    uncategorized_rows = db.execute(
+        select(
+            literal("미분류").label("category"),
             year_col,
             month_col,
             func.count(Document.id).label("count"),
         )
         .select_from(Document)
-        .outerjoin(Category, Category.id == Document.category_id)
-        .group_by(category_label, year_col, month_col)
-        .order_by(category_label.asc(), year_col.desc(), month_col.desc())
+        .where(~uncategorized_exists)
+        .group_by(year_col, month_col)
+        .order_by(year_col.desc(), month_col.desc())
     ).all()
+
+    rows = [*categorized_rows, *uncategorized_rows]
 
     bucket: dict[str, dict] = {}
     for row in rows:

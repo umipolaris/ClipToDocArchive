@@ -20,6 +20,8 @@ class DashboardRecentDocument(BaseModel):
     id: UUID
     title: str
     category: str
+    first_file_id: UUID | None = None
+    first_file_extension: str | None = None
     event_date: date | None = None
     ingested_at: datetime
     review_status: ReviewStatus
@@ -52,3 +54,56 @@ class DashboardSummaryResponse(BaseModel):
     pinned_by_category: list[DashboardPinnedCategory] = Field(default_factory=list)
     recent_documents: list[DashboardRecentDocument] = Field(default_factory=list)
     generated_at: datetime
+
+
+class DashboardTaskItem(BaseModel):
+    id: UUID
+    category: str
+    title: str
+    scheduled_at: datetime
+    all_day: bool = False
+    location: str | None = None
+    comment: str | None = None
+
+
+class DashboardTaskListResponse(BaseModel):
+    month: str
+    items: list[DashboardTaskItem] = Field(default_factory=list)
+    generated_at: datetime
+
+
+class DashboardTaskCreateRequest(BaseModel):
+    category: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=220)
+    scheduled_at: datetime
+    all_day: bool = False
+    location: str | None = Field(default=None, max_length=220)
+    comment: str | None = Field(default=None, max_length=300)
+
+
+class DashboardTaskUpdateRequest(BaseModel):
+    category: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=220)
+    scheduled_at: datetime
+    all_day: bool = False
+    location: str | None = Field(default=None, max_length=220)
+    comment: str | None = Field(default=None, max_length=300)
+
+
+class DashboardTaskSettingsResponse(BaseModel):
+    categories: list[str] = Field(default_factory=lambda: ["할일", "회의"])
+    category_colors: dict[str, str] = Field(default_factory=dict)
+    allow_all_day: bool = True
+    use_location: bool = True
+    use_comment: bool = True
+    default_time: str = "09:00"
+    generated_at: datetime
+
+
+class DashboardTaskSettingsUpdateRequest(BaseModel):
+    categories: list[str] = Field(default_factory=list, max_length=30)
+    category_colors: dict[str, str] = Field(default_factory=dict)
+    allow_all_day: bool = True
+    use_location: bool = True
+    use_comment: bool = True
+    default_time: str = Field(default="09:00", min_length=5, max_length=5)

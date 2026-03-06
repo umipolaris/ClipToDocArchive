@@ -25,7 +25,22 @@ sha256_file() {
     shasum -a 256 "$target" | awk "{print \$1}"
     return
   fi
-  echo "unavailable"
+  if command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$target" | awk "{print \$NF}"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$target" <<'PY'
+import hashlib
+import pathlib
+import sys
+path = pathlib.Path(sys.argv[1])
+print(hashlib.sha256(path.read_bytes()).hexdigest())
+PY
+    return
+  fi
+  echo "no sha256 tool found (need sha256sum/shasum/openssl/python3)" >&2
+  exit 1
 }
 
 backup_dir() {
@@ -41,11 +56,17 @@ backup_dir() {
 
   {
     echo "timestamp=$TS"
-    echo "kind=objects_snapshot"
-    echo "format=volume-snapshot-v1"
-    echo "snapshot_layout=raw-volume"
+    echo "kind=objects"
+    echo "format=archive-backup-v1"
+    echo "objects_layout=object-keys-v1"
     echo "label=$label"
     echo "source_dir=$source_dir"
+    if [ "$label" = "minio" ]; then
+      echo "storage_backend=minio"
+    else
+      echo "storage_backend=disk"
+    fi
+    echo "bucket=${STORAGE_BUCKET:-archive}"
     echo "file=$(basename "$out_file")"
     echo "sha256=$digest"
     echo "app_profile=${APP_PROFILE:-dev}"

@@ -296,6 +296,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dashboard Tasks */
+        get: operations["get_dashboard_tasks_api_dashboard_tasks_get"];
+        put?: never;
+        /** Create Dashboard Task */
+        post: operations["create_dashboard_task_api_dashboard_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dashboard Task */
+        get: operations["get_dashboard_task_api_dashboard_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Dashboard Task */
+        delete: operations["delete_dashboard_task_api_dashboard_tasks__task_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Dashboard Task */
+        patch: operations["update_dashboard_task_api_dashboard_tasks__task_id__patch"];
+        trace?: never;
+    };
+    "/api/dashboard/task-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dashboard Task Settings */
+        get: operations["get_dashboard_task_settings_api_dashboard_task_settings_get"];
+        /** Update Dashboard Task Settings */
+        put: operations["update_dashboard_task_settings_api_dashboard_task_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents": {
         parameters: {
             query?: never;
@@ -848,6 +903,58 @@ export interface paths {
         patch: operations["update_saved_filter_api_saved_filters__saved_filter_id__patch"];
         trace?: never;
     };
+    "/api/branding/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Branding Logo */
+        get: operations["get_branding_logo_api_branding_logo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/branding/logo/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Branding Logo Image */
+        get: operations["get_branding_logo_image_api_branding_logo_image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/branding/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Branding Logo */
+        post: operations["upload_branding_logo_api_admin_branding_logo_post"];
+        /** Delete Branding Logo */
+        delete: operations["delete_branding_logo_api_admin_branding_logo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/backups/files": {
         parameters: {
             query?: never;
@@ -859,7 +966,8 @@ export interface paths {
         get: operations["get_backup_files_api_admin_backups_files_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Remove All Backup Files */
+        delete: operations["remove_all_backup_files_api_admin_backups_files_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -927,6 +1035,41 @@ export interface paths {
         put?: never;
         /** Run Backup All */
         post: operations["run_backup_all_api_admin_backups_run_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Backup Schedule Settings */
+        get: operations["get_backup_schedule_settings_api_admin_backups_schedule_get"];
+        put?: never;
+        /** Upsert Backup Schedule Settings */
+        post: operations["upsert_backup_schedule_settings_api_admin_backups_schedule_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/backups/schedule/run-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Backup Schedule Now */
+        post: operations["run_backup_schedule_now_api_admin_backups_schedule_run_now_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1429,6 +1572,11 @@ export interface components {
              * @default 900
              */
             lockout_seconds: number;
+            /**
+             * Auto Login Days
+             * @default 7
+             */
+            auto_login_days: number;
             /** Updated At */
             updated_at?: string | null;
         };
@@ -1474,6 +1622,25 @@ export interface components {
              * @default 500
              */
             batch_size: number;
+        };
+        /** BackupDeleteAllResponse */
+        BackupDeleteAllResponse: {
+            /** Status */
+            status: string;
+            /** Deleted Total */
+            deleted_total: number;
+            /** Deleted Meta Total */
+            deleted_meta_total: number;
+            /** Deleted By Kind */
+            deleted_by_kind?: {
+                [key: string]: number;
+            };
+            /** Meta Deleted By Kind */
+            meta_deleted_by_kind?: {
+                [key: string]: number;
+            };
+            /** Errors */
+            errors?: string[];
         };
         /** BackupDeleteResponse */
         BackupDeleteResponse: {
@@ -1641,6 +1808,74 @@ export interface components {
             /** Sha256 */
             sha256?: string | null;
         };
+        /** BackupScheduleSettingsResponse */
+        BackupScheduleSettingsResponse: {
+            /**
+             * Scope
+             * @default default
+             */
+            scope: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Interval Days
+             * @default 1
+             */
+            interval_days: number;
+            /**
+             * Run Time
+             * @default 02:00
+             */
+            run_time: string;
+            /**
+             * Schedule Timezone
+             * @default UTC
+             */
+            schedule_timezone: string;
+            /**
+             * Target Dir
+             * @default scheduled
+             */
+            target_dir: string;
+            /** Backup Export Root */
+            backup_export_root: string;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Status */
+            last_status?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Output Dir */
+            last_output_dir?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** BackupScheduleSettingsUpdateRequest */
+        BackupScheduleSettingsUpdateRequest: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Interval Days
+             * @default 1
+             */
+            interval_days: number;
+            /**
+             * Run Time
+             * @default 02:00
+             */
+            run_time: string;
+            /**
+             * Target Dir
+             * @default scheduled
+             */
+            target_dir: string;
+        };
         /** Body_add_document_files_api_documents__id__files_post */
         Body_add_document_files_api_documents__id__files_post: {
             /** Files */
@@ -1793,6 +2028,40 @@ export interface components {
              */
             confirm: boolean;
         };
+        /** Body_upload_branding_logo_api_admin_branding_logo_post */
+        Body_upload_branding_logo_api_admin_branding_logo_post: {
+            /** File */
+            file: string;
+        };
+        /** BrandingLogoDeleteResponse */
+        BrandingLogoDeleteResponse: {
+            /** Status */
+            status: string;
+            /** Removed */
+            removed: boolean;
+            /** Previous File Id */
+            previous_file_id?: string | null;
+        };
+        /** BrandingLogoResponse */
+        BrandingLogoResponse: {
+            /**
+             * Exists
+             * @default false
+             */
+            exists: boolean;
+            /** Logo File Id */
+            logo_file_id?: string | null;
+            /** Image Url */
+            image_url?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** Mime Type */
+            mime_type?: string | null;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -1880,6 +2149,10 @@ export interface components {
             title: string;
             /** Category */
             category: string;
+            /** First File Id */
+            first_file_id?: string | null;
+            /** First File Extension */
+            first_file_extension?: string | null;
             /** Event Date */
             event_date?: string | null;
             /**
@@ -1916,6 +2189,149 @@ export interface components {
              * Format: date-time
              */
             generated_at: string;
+        };
+        /** DashboardTaskCreateRequest */
+        DashboardTaskCreateRequest: {
+            /** Category */
+            category: string;
+            /** Title */
+            title: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /**
+             * All Day
+             * @default false
+             */
+            all_day: boolean;
+            /** Location */
+            location?: string | null;
+            /** Comment */
+            comment?: string | null;
+        };
+        /** DashboardTaskItem */
+        DashboardTaskItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Category */
+            category: string;
+            /** Title */
+            title: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /**
+             * All Day
+             * @default false
+             */
+            all_day: boolean;
+            /** Location */
+            location?: string | null;
+            /** Comment */
+            comment?: string | null;
+        };
+        /** DashboardTaskListResponse */
+        DashboardTaskListResponse: {
+            /** Month */
+            month: string;
+            /** Items */
+            items?: components["schemas"]["DashboardTaskItem"][];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+        };
+        /** DashboardTaskSettingsResponse */
+        DashboardTaskSettingsResponse: {
+            /** Categories */
+            categories?: string[];
+            /** Category Colors */
+            category_colors?: {
+                [key: string]: string;
+            };
+            /**
+             * Allow All Day
+             * @default true
+             */
+            allow_all_day: boolean;
+            /**
+             * Use Location
+             * @default true
+             */
+            use_location: boolean;
+            /**
+             * Use Comment
+             * @default true
+             */
+            use_comment: boolean;
+            /**
+             * Default Time
+             * @default 09:00
+             */
+            default_time: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+        };
+        /** DashboardTaskSettingsUpdateRequest */
+        DashboardTaskSettingsUpdateRequest: {
+            /** Categories */
+            categories?: string[];
+            /** Category Colors */
+            category_colors?: {
+                [key: string]: string;
+            };
+            /**
+             * Allow All Day
+             * @default true
+             */
+            allow_all_day: boolean;
+            /**
+             * Use Location
+             * @default true
+             */
+            use_location: boolean;
+            /**
+             * Use Comment
+             * @default true
+             */
+            use_comment: boolean;
+            /**
+             * Default Time
+             * @default 09:00
+             */
+            default_time: string;
+        };
+        /** DashboardTaskUpdateRequest */
+        DashboardTaskUpdateRequest: {
+            /** Category */
+            category: string;
+            /** Title */
+            title: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /**
+             * All Day
+             * @default false
+             */
+            all_day: boolean;
+            /** Location */
+            location?: string | null;
+            /** Comment */
+            comment?: string | null;
         };
         /** DeleteUserResponse */
         DeleteUserResponse: {
@@ -2044,6 +2460,8 @@ export interface components {
             category_id: string | null;
             /** Category */
             category?: string | null;
+            /** Categories */
+            categories?: string[];
             /** Event Date */
             event_date: string | null;
             /**
@@ -2214,6 +2632,8 @@ export interface components {
             category_id?: string | null;
             /** Category Name */
             category_name?: string | null;
+            /** Category Names */
+            category_names?: string[] | null;
             /** Event Date */
             event_date?: string | null;
             /** Is Pinned */
@@ -2529,6 +2949,11 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+            /**
+             * Remember Me
+             * @default false
+             */
+            remember_me: boolean;
         };
         /** LoginResponse */
         LoginResponse: {
@@ -2538,6 +2963,16 @@ export interface components {
              * Format: date-time
              */
             logged_in_at: string;
+            /**
+             * Session Expires At
+             * Format: date-time
+             */
+            session_expires_at: string;
+            /**
+             * Remember Me
+             * @default false
+             */
+            remember_me: boolean;
         };
         /** LogoutResponse */
         LogoutResponse: {
@@ -2566,6 +3001,8 @@ export interface components {
             category_id?: string | null;
             /** Category Name */
             category_name?: string | null;
+            /** Category Names */
+            category_names?: string[];
             /** Event Date */
             event_date?: string | null;
             /**
@@ -3261,6 +3698,8 @@ export interface components {
             max_failed_attempts: number;
             /** Lockout Seconds */
             lockout_seconds: number;
+            /** Auto Login Days */
+            auto_login_days: number;
         };
         /** UpdateUserRequest */
         UpdateUserRequest: {
@@ -3961,6 +4400,219 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardSummaryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dashboard_tasks_api_dashboard_tasks_get: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM */
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_dashboard_task_api_dashboard_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardTaskCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dashboard_task_api_dashboard_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dashboard_task_api_dashboard_tasks__task_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_dashboard_task_api_dashboard_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardTaskUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dashboard_task_settings_api_dashboard_task_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskSettingsResponse"];
+                };
+            };
+        };
+    };
+    update_dashboard_task_settings_api_dashboard_task_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardTaskSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardTaskSettingsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5281,6 +5933,99 @@ export interface operations {
             };
         };
     };
+    get_branding_logo_api_branding_logo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandingLogoResponse"];
+                };
+            };
+        };
+    };
+    get_branding_logo_image_api_branding_logo_image_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    upload_branding_logo_api_admin_branding_logo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_branding_logo_api_admin_branding_logo_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandingLogoResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_branding_logo_api_admin_branding_logo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandingLogoDeleteResponse"];
+                };
+            };
+        };
+    };
     get_backup_files_api_admin_backups_files_get: {
         parameters: {
             query?: {
@@ -5299,6 +6044,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BackupFilesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_all_backup_files_api_admin_backups_files_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+                kind?: ("db" | "objects" | "config") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupDeleteAllResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5408,6 +6185,79 @@ export interface operations {
         };
     };
     run_backup_all_api_admin_backups_run_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRunAllResponse"];
+                };
+            };
+        };
+    };
+    get_backup_schedule_settings_api_admin_backups_schedule_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupScheduleSettingsResponse"];
+                };
+            };
+        };
+    };
+    upsert_backup_schedule_settings_api_admin_backups_schedule_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupScheduleSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupScheduleSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_backup_schedule_now_api_admin_backups_schedule_run_now_post: {
         parameters: {
             query?: never;
             header?: never;

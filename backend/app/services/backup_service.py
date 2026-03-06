@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -26,6 +27,7 @@ _BACKUP_FORMAT = "archive-backup-v1"
 _OBJECTS_LAYOUT = "object-keys-v1"
 _PG_RESTORE_COMPAT_MSG = 'unrecognized configuration parameter "transaction_timeout"'
 _UPLOAD_FILENAME_SANITIZER = re.compile(r"[^A-Za-z0-9._-]+")
+_CONFIG_ALLOWED_TOP_LEVEL = {"env", "monitoring", "docker-compose.yml"}
 
 
 @dataclass
@@ -41,6 +43,12 @@ class BackupFileInfo:
 class ConfigRestorePreview:
     files: list[str]
     total_files: int
+
+
+@dataclass
+class ScheduledBackupResult:
+    output_dir: str
+    items: list[dict[str, str | int | None]]
 
 
 def _now() -> datetime:
@@ -60,7 +68,7 @@ def _backup_dir(settings: Settings, kind: BackupKind) -> Path:
 
 
 def _timestamp() -> str:
-    return _now().strftime("%Y%m%d_%H%M%S")
+    return _now().strftime("%Y%m%d_%H%M%S_%f")
 
 
 def _sha256(path: Path) -> str:
@@ -125,12 +133,45 @@ def _normalize_archive_member_path(name: str) -> str:
     normalized = PurePosixPath(name)
     if normalized.is_absolute():
         raise RuntimeError("unsafe archive path")
-    parts = normalized.parts
+    parts = [part for part in normalized.parts if part not in {"", "."}]
     if not parts:
         raise RuntimeError("empty archive member path")
-    if any(part in {"", ".", ".."} for part in parts):
+    if any(part == ".." for part in parts):
         raise RuntimeError("unsafe archive path")
     return "/".join(parts)
+
+
+def _split_backup_filename(name: str) -> tuple[str, str]:
+    lower = name.lower()
+    if lower.endswith(".tar.gz"):
+        return name[:-7], name[-7:]
+    if "." in name:
+        stem, ext = name.rsplit(".", maxsplit=1)
+        return stem, f".{ext}"
+    return name, ""
+
+
+def _ensure_unique_output_file(output_dir: Path, filename: str) -> Path:
+    candidate = output_dir / filename
+    if not candidate.exists():
+        return candidate
+    stem, ext = _split_backup_filename(filename)
+    for idx in range(1, 1000):
+        next_candidate = output_dir / f"{stem}_{idx}{ext}"
+        if not next_candidate.exists():
+            return next_candidate
+    raise RuntimeError(f"failed to allocate unique backup filename for {filename}")
+
+
+def _ensure_unique_output_dir(base_dir: Path, dirname: str) -> Path:
+    candidate = base_dir / dirname
+    if not candidate.exists():
+        return candidate
+    for idx in range(1, 1000):
+        next_candidate = base_dir / f"{dirname}_{idx}"
+        if not next_candidate.exists():
+            return next_candidate
+    raise RuntimeError(f"failed to allocate unique backup directory for {dirname}")
 
 
 def _verify_backup_checksum(path: Path, meta: dict[str, str], *, kind: BackupKind) -> None:
@@ -250,7 +291,8 @@ def store_uploaded_backup(
         normalized_name = f"{base[: max(16, 120 - len(ext))]}{ext}"
 
     ts = _timestamp()
-    out_file = output_dir / f"upload_{kind}_{ts}_{os.getpid()}_{normalized_name}"
+    base_name = f"upload_{kind}_{ts}_{os.getpid()}_{normalized_name}"
+    out_file = _ensure_unique_output_file(output_dir, base_name)
     tmp_file = Path(f"{out_file}.tmp")
     meta_file = Path(f"{out_file}.meta")
 
@@ -310,7 +352,7 @@ def create_db_backup(settings: Settings) -> BackupFileInfo:
     output_dir = _backup_dir(settings, "db")
     ts = _timestamp()
     db_params = _db_connection_params(settings)
-    out_file = output_dir / f"archive_{db_params['database']}_{ts}.dump"
+    out_file = _ensure_unique_output_file(output_dir, f"archive_{db_params['database']}_{ts}.dump")
     tmp_file = Path(f"{out_file}.tmp")
     meta_file = Path(f"{out_file}.meta")
 
@@ -366,7 +408,7 @@ def create_objects_backup(settings: Settings) -> BackupFileInfo:
     output_dir = _backup_dir(settings, "objects")
     ts = _timestamp()
     suffix = "minio" if settings.storage_backend == "minio" else "disk"
-    out_file = output_dir / f"objects_{suffix}_{ts}.tar.gz"
+    out_file = _ensure_unique_output_file(output_dir, f"objects_{suffix}_{ts}.tar.gz")
     tmp_file = Path(f"{out_file}.tmp")
     meta_file = Path(f"{out_file}.meta")
 
@@ -440,7 +482,7 @@ def create_objects_backup(settings: Settings) -> BackupFileInfo:
 def create_config_backup(settings: Settings) -> BackupFileInfo:
     output_dir = _backup_dir(settings, "config")
     ts = _timestamp()
-    out_file = output_dir / f"config_{ts}.tar.gz"
+    out_file = _ensure_unique_output_file(output_dir, f"config_{ts}.tar.gz")
     tmp_file = Path(f"{out_file}.tmp")
     meta_file = Path(f"{out_file}.meta")
 
@@ -846,30 +888,170 @@ def restore_objects_backup(settings: Settings, *, filename: str, replace_existin
 def restore_config_backup(settings: Settings, *, filename: str, mode: ConfigRestoreMode) -> ConfigRestorePreview:
     source_path = _resolve_backup_file(settings, "config", filename)
     meta = _load_backup_meta(source_path)
+    meta_kind = (meta.get("kind") or "").strip().lower()
+    meta_type = (meta.get("type") or "").strip().lower()
+    meta_format = (meta.get("format") or "").strip()
+    if meta_kind and meta_kind != "config":
+        raise RuntimeError("unsupported config backup format")
+    if meta_type and meta_type != "config":
+        raise RuntimeError("unsupported config backup format")
+    if meta_format and meta_format != _BACKUP_FORMAT:
+        raise RuntimeError("unsupported config backup format")
     _verify_backup_checksum(source_path, meta, kind="config")
 
     config_root = Path(settings.backup_config_root).resolve()
     config_root.mkdir(parents=True, exist_ok=True)
+    stage_dir = Path(tempfile.mkdtemp(prefix="config_restore_", dir=str(config_root.parent)))
 
     files: list[str] = []
+    restored_rel_paths: set[str] = set()
     try:
         with tarfile.open(source_path, "r:gz") as tar:
-            members = [m for m in tar.getmembers() if m.isfile()]
-            files = [member.name for member in members]
-            if mode == "apply":
-                for member in members:
-                    target = (config_root / member.name).resolve()
-                    if config_root not in target.parents and target != config_root:
-                        raise RuntimeError("unsafe config archive path")
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    stream = tar.extractfile(member)
-                    if stream is None:
+            for member in tar.getmembers():
+                if not member.isfile():
+                    continue
+                rel = _normalize_archive_member_path(member.name)
+                top = PurePosixPath(rel).parts[0]
+                if top not in _CONFIG_ALLOWED_TOP_LEVEL:
+                    raise RuntimeError(f"invalid config backup archive: unsupported path '{rel}'")
+                stage_path = (stage_dir / rel).resolve()
+                if stage_dir not in stage_path.parents:
+                    raise RuntimeError("unsafe config archive path")
+                stage_path.parent.mkdir(parents=True, exist_ok=True)
+                stream = tar.extractfile(member)
+                if stream is None:
+                    continue
+                with stage_path.open("wb") as out:
+                    shutil.copyfileobj(stream, out, length=1024 * 1024)
+                restored_rel_paths.add(rel)
+
+        if not restored_rel_paths:
+            raise RuntimeError("invalid config backup archive: no files")
+
+        files = sorted(restored_rel_paths)
+
+        if mode == "apply":
+            for rel in files:
+                source = stage_dir / rel
+                target = (config_root / rel).resolve()
+                if config_root not in target.parents:
+                    raise RuntimeError("unsafe config archive path")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
+                    with source.open("rb") as in_fp:
+                        shutil.copyfileobj(in_fp, tmp, length=1024 * 1024)
+                    tmp_path = Path(tmp.name)
+                tmp_path.replace(target)
+
+            for root_name in ("env", "monitoring"):
+                root = config_root / root_name
+                if not root.exists():
+                    continue
+                for path in root.rglob("*"):
+                    if not path.is_file():
                         continue
-                    with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as tmp:
-                        shutil.copyfileobj(stream, tmp, length=1024 * 1024)
-                        tmp_path = Path(tmp.name)
-                    tmp_path.replace(target)
+                    rel = path.relative_to(config_root).as_posix()
+                    if rel not in restored_rel_paths:
+                        path.unlink(missing_ok=True)
+                for path in sorted(root.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+                    if path.is_dir():
+                        try:
+                            path.rmdir()
+                        except OSError:
+                            pass
+
+            compose_path = config_root / "docker-compose.yml"
+            if compose_path.exists() and "docker-compose.yml" not in restored_rel_paths:
+                compose_path.unlink(missing_ok=True)
     except (tarfile.TarError, OSError) as exc:
         raise RuntimeError(f"invalid config backup archive: {exc}") from exc
+    finally:
+        shutil.rmtree(stage_dir, ignore_errors=True)
 
     return ConfigRestorePreview(files=files[:200], total_files=len(files))
+
+
+def resolve_backup_export_dir(settings: Settings, *, target_dir: str) -> Path:
+    export_root = Path(settings.backup_export_root).expanduser().resolve()
+    export_root.mkdir(parents=True, exist_ok=True)
+
+    normalized_target = (target_dir or "").strip() or "scheduled"
+    target_path = Path(normalized_target)
+    if target_path.is_absolute():
+        resolved = target_path.expanduser().resolve()
+    else:
+        resolved = (export_root / target_path).resolve()
+
+    if resolved.exists() and not resolved.is_dir():
+        raise ValueError("target_dir must be a directory path")
+
+    try:
+        resolved.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError(f"cannot create target_dir: {exc}") from exc
+
+    # Validate write permission explicitly so operators can detect path issues at save time.
+    try:
+        with tempfile.NamedTemporaryFile(dir=resolved, prefix=".backup_write_check_", delete=False) as tmp:
+            tmp.write(b"ok")
+            tmp_path = Path(tmp.name)
+        tmp_path.unlink(missing_ok=True)
+    except OSError as exc:
+        raise ValueError(f"target_dir is not writable: {exc}") from exc
+
+    return resolved
+
+
+def create_full_backup_and_copy(settings: Settings, *, target_dir: str) -> ScheduledBackupResult:
+    export_dir = resolve_backup_export_dir(settings, target_dir=target_dir)
+    run_name = f"full_{_timestamp()}"
+    final_dir = _ensure_unique_output_dir(export_dir, run_name)
+    staging_dir = export_dir / f"{final_dir.name}.tmp"
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir, ignore_errors=True)
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    created_items: list[dict[str, str | int | None]] = []
+    try:
+        created = [
+            create_db_backup(settings),
+            create_objects_backup(settings),
+            create_config_backup(settings),
+        ]
+        for item in created:
+            source = get_backup_file_path(settings, item.kind, item.filename)
+            target_kind_dir = staging_dir / item.kind
+            target_kind_dir.mkdir(parents=True, exist_ok=True)
+
+            target_file = target_kind_dir / source.name
+            shutil.copy2(source, target_file)
+
+            source_meta = _meta_path(source)
+            if source_meta.exists():
+                shutil.copy2(source_meta, target_kind_dir / source_meta.name)
+
+            created_items.append(
+                {
+                    "kind": item.kind,
+                    "filename": item.filename,
+                    "size_bytes": item.size_bytes,
+                    "sha256": item.sha256,
+                }
+            )
+
+        manifest = {
+            "timestamp": _now().isoformat(),
+            "type": "scheduled_full_backup",
+            "target_dir": str(export_dir),
+            "run_dir": str(final_dir),
+            "items": created_items,
+        }
+        (staging_dir / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        staging_dir.rename(final_dir)
+        return ScheduledBackupResult(output_dir=str(final_dir), items=created_items)
+    except Exception:  # noqa: BLE001
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise

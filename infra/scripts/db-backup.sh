@@ -22,13 +22,35 @@ META_FILE="${OUT_FILE}.meta"
 
 mv "$TMP_FILE" "$OUT_FILE"
 
-if command -v sha256sum >/dev/null 2>&1; then
-  SHA256=$(sha256sum "$OUT_FILE" | awk "{print \$1}")
-elif command -v shasum >/dev/null 2>&1; then
-  SHA256=$(shasum -a 256 "$OUT_FILE" | awk "{print \$1}")
-else
-  SHA256="unavailable"
-fi
+compute_sha256() {
+  target=$1
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$target" | awk "{print \$1}"
+    return
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$target" | awk "{print \$1}"
+    return
+  fi
+  if command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$target" | awk "{print \$NF}"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$target" <<'PY'
+import hashlib
+import pathlib
+import sys
+path = pathlib.Path(sys.argv[1])
+print(hashlib.sha256(path.read_bytes()).hexdigest())
+PY
+    return
+  fi
+  echo "no sha256 tool found (need sha256sum/shasum/openssl/python3)" >&2
+  return 1
+}
+
+SHA256=$(compute_sha256 "$OUT_FILE")
 
 {
   echo "timestamp=$TS"

@@ -40,6 +40,15 @@ type BackupDeleteResponse = {
   meta_deleted: boolean;
 };
 
+type BackupDeleteAllResponse = {
+  status: string;
+  deleted_total: number;
+  deleted_meta_total: number;
+  deleted_by_kind: Record<string, number>;
+  meta_deleted_by_kind: Record<string, number>;
+  errors: string[];
+};
+
 type BackupRestoreDbResponse = {
   status: string;
   filename: string;
@@ -61,6 +70,21 @@ type BackupRestoreConfigResponse = {
   mode: ConfigRestoreMode;
   total_files: number;
   files: string[];
+};
+
+type BackupScheduleSettingsResponse = {
+  scope: string;
+  enabled: boolean;
+  interval_days: number;
+  run_time: string;
+  schedule_timezone?: string;
+  target_dir: string;
+  backup_export_root: string;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  last_output_dir: string | null;
+  updated_at: string | null;
 };
 
 function formatDateTime(value: string): string {
@@ -124,6 +148,19 @@ export function AdminBackupManager() {
   const [configPreviewFiles, setConfigPreviewFiles] = useState<string[]>([]);
   const [configPreviewTotal, setConfigPreviewTotal] = useState(0);
   const [progress, setProgress] = useState<OperationProgress | null>(null);
+
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleIntervalDays, setScheduleIntervalDays] = useState(1);
+  const [scheduleRunTime, setScheduleRunTime] = useState("02:00");
+  const [scheduleTargetDir, setScheduleTargetDir] = useState("scheduled");
+  const [scheduleTimezone, setScheduleTimezone] = useState("UTC");
+  const [scheduleExportRoot, setScheduleExportRoot] = useState("/backup-export");
+  const [scheduleLastRunAt, setScheduleLastRunAt] = useState<string | null>(null);
+  const [scheduleLastStatus, setScheduleLastStatus] = useState<string | null>(null);
+  const [scheduleLastError, setScheduleLastError] = useState<string | null>(null);
+  const [scheduleLastOutputDir, setScheduleLastOutputDir] = useState<string | null>(null);
 
   const progressTimerRef = useRef<number | null>(null);
   const progressHideTimerRef = useRef<number | null>(null);
@@ -207,9 +244,28 @@ export function AdminBackupManager() {
     }
   }, []);
 
+  const loadSchedule = useCallback(async () => {
+    setScheduleLoading(true);
+    try {
+      const res = await apiGet<BackupScheduleSettingsResponse>("/admin/backups/schedule");
+      setScheduleEnabled(Boolean(res.enabled));
+      setScheduleIntervalDays(Number.isFinite(res.interval_days) ? Math.max(1, Math.min(60, Math.round(res.interval_days))) : 1);
+      setScheduleRunTime(typeof res.run_time === "string" && res.run_time ? res.run_time : "02:00");
+      setScheduleTimezone(typeof res.schedule_timezone === "string" && res.schedule_timezone ? res.schedule_timezone : "UTC");
+      setScheduleTargetDir((res.target_dir || "scheduled").trim() || "scheduled");
+      setScheduleExportRoot(res.backup_export_root || "/backup-export");
+      setScheduleLastRunAt(res.last_run_at ?? null);
+      setScheduleLastStatus(res.last_status ?? null);
+      setScheduleLastError(res.last_error ?? null);
+      setScheduleLastOutputDir(res.last_output_dir ?? null);
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadKind("db"), loadKind("objects"), loadKind("config")]);
-  }, [loadKind]);
+    await Promise.all([loadKind("db"), loadKind("objects"), loadKind("config"), loadSchedule()]);
+  }, [loadKind, loadSchedule]);
 
   useEffect(() => {
     void refreshAll();
@@ -263,6 +319,58 @@ export function AdminBackupManager() {
     }
   };
 
+  const saveSchedule = async () => {
+    const normalizedInterval = Math.max(1, Math.min(60, Math.round(Number(scheduleIntervalDays) || 1)));
+    const normalizedRunTime = (scheduleRunTime || "").trim() || "02:00";
+    const normalizedTargetDir = (scheduleTargetDir || "").trim() || "scheduled";
+
+    setScheduleSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const res = await apiPost<BackupScheduleSettingsResponse>("/admin/backups/schedule", {
+        enabled: scheduleEnabled,
+        interval_days: normalizedInterval,
+        run_time: normalizedRunTime,
+        target_dir: normalizedTargetDir,
+      });
+      setScheduleEnabled(Boolean(res.enabled));
+      setScheduleIntervalDays(Number.isFinite(res.interval_days) ? Math.max(1, Math.min(60, Math.round(res.interval_days))) : 1);
+      setScheduleRunTime(typeof res.run_time === "string" && res.run_time ? res.run_time : "02:00");
+      setScheduleTimezone(typeof res.schedule_timezone === "string" && res.schedule_timezone ? res.schedule_timezone : "UTC");
+      setScheduleTargetDir((res.target_dir || "scheduled").trim() || "scheduled");
+      setScheduleExportRoot(res.backup_export_root || "/backup-export");
+      setScheduleLastRunAt(res.last_run_at ?? null);
+      setScheduleLastStatus(res.last_status ?? null);
+      setScheduleLastError(res.last_error ?? null);
+      setScheduleLastOutputDir(res.last_output_dir ?? null);
+      setMessage(`자동 전체 백업 스케줄 저장 완료 (${res.enabled ? "ON" : "OFF"})`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "자동 백업 스케줄 저장 실패");
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const runScheduleNow = async () => {
+    setRunning("schedule-now");
+    setError("");
+    setMessage("");
+    beginProgress("자동 스케줄 백업", "전체 백업 실행 중...");
+    try {
+      const res = await apiPost<BackupRunAllResponse>("/admin/backups/schedule/run-now", {});
+      const summary = (res.items || []).map((x) => `${KIND_LABEL[x.kind]}(${x.filename})`).join(", ");
+      setMessage(summary ? `스케줄 백업 1회 실행 완료: ${summary}` : "스케줄 백업 1회 실행 완료");
+      await refreshAll();
+      finishProgress(true, "완료");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "스케줄 백업 1회 실행 실패");
+      finishProgress(false, "실패");
+    } finally {
+      setRunning("");
+    }
+  };
+
   const deleteBackupFile = async (kind: BackupKind, filename: string) => {
     const confirmed = window.confirm(`백업 파일을 삭제할까요?\n${filename}`);
     if (!confirmed) return;
@@ -285,6 +393,28 @@ export function AdminBackupManager() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "백업 파일 삭제 실패");
+    } finally {
+      setRunning("");
+    }
+  };
+
+  const deleteAllBackupFiles = async () => {
+    const confirmed = window.confirm("모든 백업 파일(DB/첨부/설정)을 전체 삭제할까요?\n이 작업은 되돌릴 수 없습니다.");
+    if (!confirmed) return;
+
+    setRunning("delete-all");
+    setError("");
+    setMessage("");
+    try {
+      const res = await apiDelete<BackupDeleteAllResponse>("/admin/backups/files?confirm=true");
+      const byKind = ["db", "objects", "config"]
+        .map((kind) => `${KIND_LABEL[kind as BackupKind]} ${res.deleted_by_kind?.[kind] ?? 0}건`)
+        .join(", ");
+      const errSuffix = res.errors && res.errors.length > 0 ? ` (일부 오류 ${res.errors.length}건)` : "";
+      setMessage(`전체 삭제 완료: 총 ${res.deleted_total}건 (${byKind})${errSuffix}`);
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "전체 삭제 실패");
     } finally {
       setRunning("");
     }
@@ -525,6 +655,15 @@ export function AdminBackupManager() {
     [filesByKind, loadingByKind],
   );
 
+  const resolvedScheduleTargetPath = useMemo(() => {
+    const target = (scheduleTargetDir || "").trim() || "scheduled";
+    const isAbsolute = /^([A-Za-z]:[\\/]|\/|\\\\)/.test(target);
+    if (isAbsolute) return target;
+    const root = (scheduleExportRoot || "/backup-export").replace(/[\\/]+$/, "");
+    const rel = target.replace(/^[\\/]+/, "");
+    return `${root}/${rel}`;
+  }, [scheduleExportRoot, scheduleTargetDir]);
+
   return (
     <section className="space-y-4">
       <article className="rounded-lg border border-stone-200 bg-panel p-3 shadow-panel">
@@ -578,6 +717,75 @@ export function AdminBackupManager() {
         <p className="text-xs text-stone-500">대용량 백업은 시간이 오래 걸릴 수 있습니다.</p>
       </article>
 
+      <article className="rounded-lg border border-stone-200 bg-panel p-3 shadow-panel">
+        <h3 className="mb-2 text-sm font-semibold">자동 전체 백업 스케줄</h3>
+        <div className="grid gap-2 md:grid-cols-[auto_140px_140px_1fr_auto_auto] md:items-center">
+          <label className="inline-flex items-center gap-1 text-xs text-stone-700">
+            <input type="checkbox" checked={scheduleEnabled} onChange={(e) => setScheduleEnabled(e.target.checked)} />
+            자동백업 ON/OFF
+          </label>
+          <label className="flex items-center gap-1 text-xs text-stone-700">
+            <span>주기(일)</span>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={scheduleIntervalDays}
+              onChange={(e) => setScheduleIntervalDays(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+              className="w-16 rounded border border-stone-300 px-2 py-1 text-xs"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-xs text-stone-700">
+            <span>시간</span>
+            <input
+              type="time"
+              value={scheduleRunTime}
+              onChange={(e) => setScheduleRunTime(e.target.value || "02:00")}
+              className="rounded border border-stone-300 px-2 py-1 text-xs"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-xs text-stone-700">
+            <span>복사폴더</span>
+            <input
+              value={scheduleTargetDir}
+              onChange={(e) => setScheduleTargetDir(e.target.value)}
+              className="min-w-0 flex-1 rounded border border-stone-300 px-2 py-1 text-xs"
+              placeholder="scheduled"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void saveSchedule()}
+            className="inline-flex items-center justify-center rounded border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-60"
+            disabled={running !== "" || scheduleSaving || scheduleLoading}
+          >
+            저장
+          </button>
+          <button
+            type="button"
+            onClick={() => void runScheduleNow()}
+            className="inline-flex items-center justify-center rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+            disabled={running !== "" || scheduleSaving || scheduleLoading}
+          >
+            지금 1회 실행
+          </button>
+        </div>
+        <p className="mt-2 text-[11px] text-stone-600">
+          복사폴더는 절대경로를 입력하면 해당 경로로 저장됩니다. 경로 생성/쓰기 권한이 없으면 저장 시 오류가 표시됩니다.
+        </p>
+        <div className="mt-2 grid gap-1 text-[11px] text-stone-600 md:grid-cols-2">
+          <p>현재 상태: {scheduleEnabled ? "ON" : "OFF"}</p>
+          <p>스케줄 시간대: {scheduleTimezone}</p>
+          <p className="truncate" title={resolvedScheduleTargetPath}>실제 저장 경로: {resolvedScheduleTargetPath}</p>
+          <p>마지막 실행: {scheduleLastRunAt ? formatDateTime(scheduleLastRunAt) : "-"}</p>
+          <p>초기 기본값: OFF</p>
+          <p>기본 루트(상대경로 기준): {scheduleExportRoot}</p>
+          <p>마지막 상태: {scheduleLastStatus || "-"}</p>
+          <p className="md:col-span-2 truncate" title={scheduleLastOutputDir || ""}>마지막 출력 폴더: {scheduleLastOutputDir || "-"}</p>
+          {scheduleLastError ? <p className="md:col-span-2 text-red-700">최근 오류: {scheduleLastError}</p> : null}
+        </div>
+      </article>
+
       {progress ? (
         <article className="rounded-lg border border-stone-200 bg-white p-3 shadow-panel">
           <div className="mb-1 flex items-center justify-between gap-3">
@@ -598,7 +806,18 @@ export function AdminBackupManager() {
       {error ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
       <article className="rounded-lg border border-stone-200 bg-panel p-3 shadow-panel">
-        <h3 className="mb-2 text-sm font-semibold">백업 파일 목록</h3>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">백업 파일 목록</h3>
+          <button
+            className="inline-flex items-center gap-1 rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100 disabled:opacity-60"
+            type="button"
+            onClick={() => void deleteAllBackupFiles()}
+            disabled={running !== ""}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            전체 삭제
+          </button>
+        </div>
         <div className="grid gap-3 lg:grid-cols-3">
           {backupSections.map((section) => (
             <div key={section.kind} className="rounded border border-stone-200">

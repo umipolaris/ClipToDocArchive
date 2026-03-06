@@ -113,6 +113,29 @@ def test_store_uploaded_backup_rejects_empty_file(tmp_path: Path):
         )
 
 
+def test_store_uploaded_backup_avoids_filename_collision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    settings = _make_settings(tmp_path)
+    monkeypatch.setattr(backup_service, "_timestamp", lambda: "20260303_120000_000000")
+    monkeypatch.setattr(backup_service.os, "getpid", lambda: 4242)
+
+    first = backup_service.store_uploaded_backup(
+        settings,
+        kind="db",
+        upload_filename="archive.dump",
+        upload_stream=io.BytesIO(b"first"),
+    )
+    second = backup_service.store_uploaded_backup(
+        settings,
+        kind="db",
+        upload_filename="archive.dump",
+        upload_stream=io.BytesIO(b"second"),
+    )
+
+    assert first.filename != second.filename
+    assert Path(settings.backup_root, "db", first.filename).exists()
+    assert Path(settings.backup_root, "db", second.filename).exists()
+
+
 def test_list_backup_files_filters_unsupported_object_archives(tmp_path: Path):
     settings = _make_settings(tmp_path)
     objects_dir = Path(settings.backup_root) / "objects"
@@ -242,6 +265,78 @@ def test_restore_config_backup_rejects_invalid_archive_payload(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="invalid config backup archive"):
         backup_service.restore_config_backup(settings, filename=archive_path.name, mode="preview")
+
+
+def test_restore_config_backup_accepts_dot_slash_member_paths(tmp_path: Path):
+    settings = _make_settings(tmp_path)
+    archive_path = Path(settings.backup_root) / "config" / "config_20260303_120002.tar.gz"
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+
+    env_file = tmp_path / "sample.env"
+    env_file.write_text("A=1\n", encoding="utf-8")
+    compose_file = tmp_path / "docker-compose.yml"
+    compose_file.write_text("services: {}\n", encoding="utf-8")
+    with tarfile.open(archive_path, "w:gz") as tar:
+        tar.add(env_file, arcname="./env/.env.common")
+        tar.add(compose_file, arcname="./docker-compose.yml")
+
+    digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+    Path(f"{archive_path}.meta").write_text(
+        "\n".join(
+            [
+                "kind=config",
+                "format=archive-backup-v1",
+                f"sha256={digest}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    preview = backup_service.restore_config_backup(settings, filename=archive_path.name, mode="preview")
+    assert preview.total_files == 2
+    assert "env/.env.common" in preview.files
+    assert "docker-compose.yml" in preview.files
+
+
+def test_restore_config_backup_apply_prunes_stale_managed_files(tmp_path: Path):
+    settings = _make_settings(tmp_path)
+    config_root = Path(settings.backup_config_root)
+    (config_root / "env").mkdir(parents=True, exist_ok=True)
+    (config_root / "monitoring").mkdir(parents=True, exist_ok=True)
+    (config_root / "env" / "old.env").write_text("OLD=1\n", encoding="utf-8")
+    (config_root / "monitoring" / "old.yml").write_text("old: true\n", encoding="utf-8")
+    (config_root / "docker-compose.yml").write_text("services:\n  old: {}\n", encoding="utf-8")
+
+    archive_path = Path(settings.backup_root) / "config" / "config_20260303_120003.tar.gz"
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    src_env = tmp_path / "new.env"
+    src_env.write_text("NEW=1\n", encoding="utf-8")
+    src_compose = tmp_path / "new-compose.yml"
+    src_compose.write_text("services:\n  api: {}\n", encoding="utf-8")
+    with tarfile.open(archive_path, "w:gz") as tar:
+        tar.add(src_env, arcname="env/.env.common")
+        tar.add(src_compose, arcname="docker-compose.yml")
+
+    digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+    Path(f"{archive_path}.meta").write_text(
+        "\n".join(
+            [
+                "kind=config",
+                "format=archive-backup-v1",
+                f"sha256={digest}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = backup_service.restore_config_backup(settings, filename=archive_path.name, mode="apply")
+    assert result.total_files == 2
+    assert (config_root / "env" / ".env.common").exists()
+    assert (config_root / "docker-compose.yml").exists()
+    assert not (config_root / "env" / "old.env").exists()
+    assert not (config_root / "monitoring" / "old.yml").exists()
 
 
 def test_restore_db_backup_quotes_hyphenated_db_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

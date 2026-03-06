@@ -8,6 +8,7 @@ from app.db.models import UserRole
 class LoginRequest(BaseModel):
     username: str
     password: str
+    remember_me: bool = False
 
 
 class AuthUser(BaseModel):
@@ -19,6 +20,8 @@ class AuthUser(BaseModel):
 class LoginResponse(BaseModel):
     user: AuthUser
     logged_in_at: datetime
+    session_expires_at: datetime
+    remember_me: bool = False
 
 
 class LogoutResponse(BaseModel):
@@ -85,6 +88,7 @@ class AuthSecurityPolicy(BaseModel):
     require_special: bool = True
     max_failed_attempts: int = 5
     lockout_seconds: int = 900
+    auto_login_days: int = 7
     updated_at: datetime | None = None
 
 
@@ -96,3 +100,4 @@ class UpdateAuthSecurityPolicyRequest(BaseModel):
     require_special: bool = True
     max_failed_attempts: int = Field(ge=1, le=20)
     lockout_seconds: int = Field(ge=60, le=86_400)
+    auto_login_days: int = Field(ge=1, le=365)

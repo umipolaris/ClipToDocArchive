@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { HardDrive, History, Users } from "lucide-react";
+import { HardDrive, History, Image as ImageIcon, Users } from "lucide-react";
 import { AdminBackupManager } from "@/components/admin/AdminBackupManager";
+import { AdminBrandingManager } from "@/components/admin/AdminBrandingManager";
 import { AdminLogViewer } from "@/components/admin/AdminLogViewer";
 import { AdminUserManager } from "@/components/admin/AdminUserManager";
 
-type AdminTab = "users" | "logs" | "backup";
+type AdminTab = "users" | "logs" | "backup" | "branding";
 
 export function AdminWorkspace() {
   const [tab, setTab] = useState<AdminTab>("users");
@@ -35,11 +36,19 @@ export function AdminWorkspace() {
           <HardDrive className="h-4 w-4" />
           백업/복구
         </button>
+        <button
+          className={`inline-flex items-center gap-1 rounded border px-3 py-1 text-sm ${tab === "branding" ? "border-accent bg-accent text-white" : "border-stone-300 hover:bg-stone-50"}`}
+          onClick={() => setTab("branding")}
+        >
+          <ImageIcon className="h-4 w-4" />
+          브랜딩
+        </button>
       </div>
 
       {tab === "users" ? <AdminUserManager /> : null}
       {tab === "logs" ? <AdminLogViewer /> : null}
       {tab === "backup" ? <AdminBackupManager /> : null}
+      {tab === "branding" ? <AdminBrandingManager /> : null}
     </section>
   );
 }

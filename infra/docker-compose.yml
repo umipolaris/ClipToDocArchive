@@ -76,6 +76,9 @@ services:
       - ../backend:/app
       - ./data/ingest_tmp:/tmp/doc-archive-ingest
       - ./data/backup:/backup
+      - ./data/backup_export:/backup-export
+      - ${BACKUP_HOST_PATH:-/Users/umipolaris/work}:${BACKUP_HOST_CONTAINER_PATH:-/Users/umipolaris/work}
+      - ${BACKUP_HOST_PATH:-/Users/umipolaris/work}:/host-backup
       - ./env:/config/env
       - ./monitoring:/config/monitoring
       - ./docker-compose.yml:/config/docker-compose.yml
@@ -98,6 +101,13 @@ services:
       - ../backend:/app
       - ./data/ingest_tmp:/tmp/doc-archive-ingest
       - ./data/archive:/data/archive
+      - ./data/backup:/backup
+      - ${BACKUP_HOST_PATH:-/Users/umipolaris/work}:${BACKUP_HOST_CONTAINER_PATH:-/Users/umipolaris/work}
+      - ${BACKUP_HOST_PATH:-/Users/umipolaris/work}:/host-backup
+      - ./env:/config/env
+      - ./monitoring:/config/monitoring
+      - ./docker-compose.yml:/config/docker-compose.yml
+      - ./data/backup_export:/backup-export
 
   beat:
     build:
@@ -113,6 +123,9 @@ services:
     command: celery -A app.worker.celery_app.celery_app beat -l info
     volumes:
       - ../backend:/app
+      - ./data/backup_export:/backup-export
+      - ${BACKUP_HOST_PATH:-/Users/umipolaris/work}:${BACKUP_HOST_CONTAINER_PATH:-/Users/umipolaris/work}
+      - ${BACKUP_HOST_PATH:-/Users/umipolaris/work}:/host-backup
 
   frontend:
     build:

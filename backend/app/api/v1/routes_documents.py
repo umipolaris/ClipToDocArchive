@@ -12,9 +12,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File as UploadFormFile, Form, HTTPException, Query, Request, UploadFile, status
 from minio.error import S3Error
-from sqlalchemy import and_, asc, desc, func, select, update
+from sqlalchemy import and_, asc, desc, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from starlette.responses import FileResponse, StreamingResponse
 
 from app.core.auth import CurrentUser, require_roles
@@ -23,6 +23,7 @@ from app.db.models import (
     AuditLog,
     Category,
     Document,
+    DocumentCategory,
     DocumentComment,
     DocumentFile,
     DocumentTag,
@@ -90,6 +91,21 @@ def _slugify(text: str) -> str:
 
 
 def _normalize_tag_names(names: list[str]) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw in names:
+        name = raw.strip()
+        if not name:
+            continue
+        slug = _slugify(name)
+        if slug in seen:
+            continue
+        seen.add(slug)
+        normalized.append(name)
+    return normalized
+
+
+def _normalize_category_names(names: list[str]) -> list[str]:
     seen: set[str] = set()
     normalized: list[str] = []
     for raw in names:
@@ -196,6 +212,70 @@ def _get_tag_names(db: Session, document_id: UUID) -> list[str]:
         .order_by(Tag.name.asc())
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def _get_document_category_names(db: Session, document_id: UUID) -> list[str]:
+    rows = db.execute(
+        select(Category.name)
+        .join(DocumentCategory, DocumentCategory.category_id == Category.id)
+        .where(DocumentCategory.document_id == document_id)
+        .order_by(Category.name.asc())
+    ).scalars().all()
+    return [name for name in rows if name]
+
+
+def _get_document_category_ids(db: Session, document_id: UUID) -> list[UUID]:
+    rows = db.execute(
+        select(DocumentCategory.category_id)
+        .where(DocumentCategory.document_id == document_id)
+        .order_by(DocumentCategory.created_at.asc())
+    ).scalars().all()
+    dedup: list[UUID] = []
+    seen: set[UUID] = set()
+    for category_id in rows:
+        if category_id in seen:
+            continue
+        seen.add(category_id)
+        dedup.append(category_id)
+    return dedup
+
+
+def _sync_document_categories(
+    db: Session,
+    *,
+    document_id: UUID,
+    category_ids: list[UUID],
+    created_by: UUID,
+) -> None:
+    desired: list[UUID] = []
+    seen: set[UUID] = set()
+    for category_id in category_ids:
+        if category_id in seen:
+            continue
+        seen.add(category_id)
+        desired.append(category_id)
+
+    existing_rows = db.execute(
+        select(DocumentCategory).where(DocumentCategory.document_id == document_id)
+    ).scalars().all()
+    existing_map = {row.category_id: row for row in existing_rows}
+    desired_set = set(desired)
+
+    for row in existing_rows:
+        if row.category_id not in desired_set:
+            db.delete(row)
+
+    for category_id in desired:
+        if category_id in existing_map:
+            continue
+        db.add(
+            DocumentCategory(
+                document_id=document_id,
+                category_id=category_id,
+                created_by=created_by,
+            )
+        )
+    db.flush()
 
 
 def _get_document_files(db: Session, document_id: UUID) -> list[DocumentFileItem]:
@@ -458,6 +538,11 @@ def _build_order_by(
 def _to_document_detail_response(db: Session, doc: Document) -> DocumentDetailResponse:
     tags = _get_tag_names(db, doc.id)
     category = db.get(Category, doc.category_id) if doc.category_id else None
+    category_names = _get_document_category_names(db, doc.id)
+    if category and category.name and category.name not in category_names:
+        category_names = [category.name, *category_names]
+    elif category and category.name:
+        category_names = [category.name, *[name for name in category_names if name != category.name]]
     files = _get_document_files(db, doc.id)
     versions = _get_document_versions(db, doc.id)
 
@@ -471,6 +556,7 @@ def _to_document_detail_response(db: Session, doc: Document) -> DocumentDetailRe
         summary=doc.summary,
         category_id=doc.category_id,
         category=category.name if category else None,
+        categories=category_names,
         event_date=doc.event_date,
         ingested_at=doc.ingested_at,
         is_pinned=bool(doc.is_pinned),
@@ -667,7 +753,11 @@ def list_documents(
 ) -> DocumentListResponse:
     order_by = _build_order_by(sort_by=sort_by, sort_order=sort_order)
     settings = get_settings()
-    if q and sort_by != "last_modified_at" and is_meili_enabled(settings):
+    # NOTE:
+    # Meilisearch index currently stores only primary category metadata.
+    # When category filters are provided, force DB query path so multi-category
+    # mapped documents are included correctly.
+    if q and sort_by != "last_modified_at" and is_meili_enabled(settings) and category_id is None and category_name is None:
         try:
             meili_result = search_document_ids(
                 q,
@@ -738,12 +828,38 @@ def list_documents(
         ts_query = func.plainto_tsquery("simple", q)
         filters.append(_document_search_vector_expr().op("@@")(ts_query))
     if category_id:
-        filters.append(Document.category_id == category_id)
+        category_id_match = (
+            select(1)
+            .select_from(DocumentCategory)
+            .where(
+                DocumentCategory.document_id == Document.id,
+                DocumentCategory.category_id == category_id,
+            )
+            .exists()
+        )
+        filters.append(or_(Document.category_id == category_id, category_id_match))
     if category_name:
         if category_name == "미분류":
-            filters.append(Document.category_id.is_(None))
+            has_any_category = (
+                select(1)
+                .select_from(DocumentCategory)
+                .where(DocumentCategory.document_id == Document.id)
+                .exists()
+            )
+            filters.append(~has_any_category)
         else:
-            filters.append(Category.name == category_name)
+            category_alias = aliased(Category)
+            category_name_match = (
+                select(1)
+                .select_from(DocumentCategory)
+                .join(category_alias, category_alias.id == DocumentCategory.category_id)
+                .where(
+                    DocumentCategory.document_id == Document.id,
+                    category_alias.name == category_name,
+                )
+                .exists()
+            )
+            filters.append(or_(Category.name == category_name, category_name_match))
     if event_date_from:
         filters.append(Document.event_date >= event_date_from)
     if event_date_to:
@@ -827,18 +943,30 @@ def create_manual_post(
     if not title:
         raise HTTPException(status_code=400, detail="title is required")
     normalized_tags = _normalize_tag_names(req.tags)
+    normalized_category_names = _normalize_category_names(req.category_names or [])
 
     category_id = req.category_id
     category_name_for_caption: str | None = None
+    resolved_category_ids: list[UUID] = []
     if category_id:
         category = db.get(Category, category_id)
         if not category:
             raise HTTPException(status_code=400, detail="category_id not found")
         category_name_for_caption = category.name
-    elif req.category_name:
+        resolved_category_ids.append(category.id)
+    if req.category_name and req.category_name.strip():
         category = _upsert_category(db, req.category_name, current_user.id)
-        category_id = category.id
-        category_name_for_caption = category.name
+        resolved_category_ids.append(category.id)
+        if category_id is None:
+            category_id = category.id
+            category_name_for_caption = category.name
+
+    for category_name in normalized_category_names:
+        category = _upsert_category(db, category_name, current_user.id)
+        resolved_category_ids.append(category.id)
+        if category_id is None:
+            category_id = category.id
+            category_name_for_caption = category.name
 
     description = req.description or ""
     caption_raw = req.caption_raw
@@ -874,9 +1002,22 @@ def create_manual_post(
             inferred_category = _upsert_category(db, auto_rule_out.category, current_user.id)
             category_id = inferred_category.id
             category_name_for_caption = inferred_category.name
+            resolved_category_ids.append(inferred_category.id)
     except Exception:
         # Smart tag/category generation is best-effort and must not block manual posting.
         pass
+
+    dedup_category_ids: list[UUID] = []
+    seen_category_ids: set[UUID] = set()
+    for cid in resolved_category_ids:
+        if cid in seen_category_ids:
+            continue
+        seen_category_ids.add(cid)
+        dedup_category_ids.append(cid)
+    if category_id and category_id not in seen_category_ids:
+        dedup_category_ids.insert(0, category_id)
+    if category_id:
+        dedup_category_ids = [category_id, *[cid for cid in dedup_category_ids if cid != category_id]]
 
     summary = req.summary.strip() if req.summary else ""
     if not summary:
@@ -901,6 +1042,12 @@ def create_manual_post(
     )
     db.add(doc)
     db.flush()
+    _sync_document_categories(
+        db,
+        document_id=doc.id,
+        category_ids=dedup_category_ids,
+        created_by=current_user.id,
+    )
 
     tag_rows = _upsert_tags(db, normalized_tags, current_user.id)
     for tag in tag_rows:
@@ -931,6 +1078,7 @@ def create_manual_post(
             after_json={
                 "title": doc.title,
                 "category_id": str(doc.category_id) if doc.category_id else None,
+                "category_ids": [str(cid) for cid in _get_document_category_ids(db, doc.id)],
                 "event_date": doc.event_date.isoformat() if doc.event_date else None,
                 "is_pinned": bool(doc.is_pinned),
                 "tags": [tag.name for tag in tag_rows],
@@ -1367,6 +1515,7 @@ def patch_document(
         "description": doc.description,
         "summary": doc.summary,
         "category_id": doc.category_id,
+        "category_ids": [str(cid) for cid in _get_document_category_ids(db, doc.id)],
         "event_date": doc.event_date,
         "is_pinned": bool(doc.is_pinned),
         "pinned_at": doc.pinned_at,
@@ -1399,25 +1548,71 @@ def patch_document(
 
     category_id_provided = "category_id" in fields_set
     category_name_provided = "category_name" in fields_set
-    resolved_category_id = None
+    category_names_provided = "category_names" in fields_set
+    existing_category_ids = _get_document_category_ids(db, doc.id)
+
+    resolved_category_id: UUID | None = None
     if category_name_provided:
         if req.category_name and req.category_name.strip():
             resolved_category_id = _upsert_category(db, req.category_name, current_user.id).id
         else:
             resolved_category_id = None
 
+    resolved_category_name_ids: list[UUID] | None = None
+    if category_names_provided:
+        resolved_category_name_ids = []
+        for category_name in _normalize_category_names(req.category_names or []):
+            category_row = _upsert_category(db, category_name, current_user.id)
+            resolved_category_name_ids.append(category_row.id)
+
+    next_primary_category_id = doc.category_id
     if category_id_provided:
         if req.category_id:
             category_row = db.get(Category, req.category_id)
             if not category_row:
                 raise HTTPException(status_code=400, detail="category_id not found")
-            doc.category_id = category_row.id
+            next_primary_category_id = category_row.id
         elif category_name_provided:
-            doc.category_id = resolved_category_id
+            next_primary_category_id = resolved_category_id
         else:
-            doc.category_id = None
+            next_primary_category_id = None
     elif category_name_provided:
-        doc.category_id = resolved_category_id
+        next_primary_category_id = resolved_category_id
+
+    any_category_update = category_id_provided or category_name_provided or category_names_provided
+    if any_category_update:
+        next_category_ids = list(existing_category_ids)
+        if resolved_category_name_ids is not None:
+            next_category_ids = list(resolved_category_name_ids)
+        if next_primary_category_id:
+            if next_primary_category_id in next_category_ids:
+                next_category_ids = [next_primary_category_id, *[cid for cid in next_category_ids if cid != next_primary_category_id]]
+            else:
+                next_category_ids = [next_primary_category_id, *next_category_ids]
+
+        if next_primary_category_id is None and next_category_ids:
+            next_primary_category_id = next_category_ids[0]
+
+        dedup_next_category_ids: list[UUID] = []
+        seen_next_category_ids: set[UUID] = set()
+        for cid in next_category_ids:
+            if cid in seen_next_category_ids:
+                continue
+            seen_next_category_ids.add(cid)
+            dedup_next_category_ids.append(cid)
+        if next_primary_category_id and next_primary_category_id in dedup_next_category_ids:
+            dedup_next_category_ids = [
+                next_primary_category_id,
+                *[cid for cid in dedup_next_category_ids if cid != next_primary_category_id],
+            ]
+
+        doc.category_id = next_primary_category_id
+        _sync_document_categories(
+            db,
+            document_id=doc.id,
+            category_ids=dedup_next_category_ids,
+            created_by=current_user.id,
+        )
 
     if "tags" in fields_set:
         db.query(DocumentTag).filter(DocumentTag.document_id == doc.id).delete()
@@ -1443,6 +1638,7 @@ def patch_document(
                 "description": before["description"],
                 "summary": before["summary"],
                 "category_id": str(before["category_id"]) if before["category_id"] else None,
+                "category_ids": before["category_ids"],
                 "event_date": before["event_date"].isoformat() if before["event_date"] else None,
                 "is_pinned": before["is_pinned"],
                 "pinned_at": before["pinned_at"].isoformat() if before["pinned_at"] else None,
@@ -1453,6 +1649,7 @@ def patch_document(
                 "description": doc.description,
                 "summary": doc.summary,
                 "category_id": str(doc.category_id) if doc.category_id else None,
+                "category_ids": [str(cid) for cid in _get_document_category_ids(db, doc.id)],
                 "event_date": doc.event_date.isoformat() if doc.event_date else None,
                 "is_pinned": bool(doc.is_pinned),
                 "pinned_at": doc.pinned_at.isoformat() if doc.pinned_at else None,

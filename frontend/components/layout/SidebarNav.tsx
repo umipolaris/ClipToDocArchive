@@ -8,6 +8,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Home,
   FolderOpen,
+  Images,
   Pencil,
   Clock3,
   Search,
@@ -19,6 +20,7 @@ import {
   User,
   Files,
 } from "lucide-react";
+import { buildApiUrl } from "@/lib/api-client";
 import { userRoleLabel } from "@/lib/labels";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
@@ -29,9 +31,16 @@ type AuthUser = {
   role: "ADMIN" | "EDITOR" | "REVIEWER" | "VIEWER";
 };
 
+type BrandingLogo = {
+  exists: boolean;
+  image_url: string | null;
+  filename: string | null;
+};
+
 const menus: Array<{ href: Route; label: string; icon: LucideIcon }> = [
   { href: "/dashboard", label: "대시보드", icon: Home },
   { href: "/archive", label: "아카이브", icon: FolderOpen },
+  { href: "/media", label: "미디어 갤러리", icon: Images },
   { href: "/mind-map", label: "마인드맵", icon: GitBranch },
   { href: "/manual-post", label: "수동 게시", icon: Pencil },
   { href: "/timeline", label: "타임라인", icon: Clock3 },
@@ -51,6 +60,7 @@ export function SidebarNav({
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [logo, setLogo] = useState<BrandingLogo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +74,17 @@ export function SidebarNav({
         // ignore
       }
     }
-    void loadMe();
+    async function loadLogo() {
+      try {
+        const res = await fetch(buildApiUrl("/branding/logo"), { cache: "no-store", credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as BrandingLogo;
+        if (!cancelled) setLogo(data);
+      } catch {
+        // ignore
+      }
+    }
+    void Promise.all([loadMe(), loadLogo()]);
     return () => {
       cancelled = true;
     };
@@ -78,6 +98,12 @@ export function SidebarNav({
 
   return (
     <aside className={`w-64 shrink-0 border-r border-stone-200 bg-panel p-4 ${className}`}>
+      {logo?.exists && logo.image_url ? (
+        <div className="mb-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={buildApiUrl(logo.image_url)} alt={logo.filename || "홈페이지 로고"} className="h-20 w-full object-contain" />
+        </div>
+      ) : null}
       <div className="mb-4 rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-amber-50 p-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white text-accent shadow-sm">

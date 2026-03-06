@@ -73,6 +73,7 @@ type DocumentDetailResponse = {
   summary: string;
   category_id?: string | null;
   category: string | null;
+  categories?: string[];
   event_date: string | null;
   ingested_at: string;
   is_pinned: boolean;
@@ -146,8 +147,8 @@ export default function DocumentDetailPage({ params }: PageProps) {
   const [editTitle, setEditTitle] = useState("");
   const [editDescriptionHtml, setEditDescriptionHtml] = useState("<p></p>");
   const [editSummary, setEditSummary] = useState("");
-  const [editCategoryName, setEditCategoryName] = useState("");
-  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [editCategoryNames, setEditCategoryNames] = useState<string[]>([]);
+  const [customCategoryName, setCustomCategoryName] = useState("");
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(true);
   const [categoryOptionsError, setCategoryOptionsError] = useState("");
@@ -220,8 +221,8 @@ export default function DocumentDetailPage({ params }: PageProps) {
       setEditTitle("");
       setEditDescriptionHtml("<p></p>");
       setEditSummary("");
-      setEditCategoryName("");
-      setIsCustomCategory(false);
+      setEditCategoryNames([]);
+      setCustomCategoryName("");
       setEditEventDate("");
       setEditTags("");
       setEditIsPinned(false);
@@ -237,9 +238,15 @@ export default function DocumentDetailPage({ params }: PageProps) {
     setEditTitle(detail.title);
     setEditDescriptionHtml(normalizeRichContentHtml(detail.description || ""));
     setEditSummary(detail.summary || "");
-    const initialCategory = detail.category || "";
-    setEditCategoryName(initialCategory);
-    setIsCustomCategory(Boolean(initialCategory));
+    const initialCategories = Array.from(
+      new Set(
+        (detail.categories && detail.categories.length > 0 ? detail.categories : detail.category ? [detail.category] : [])
+          .map((name) => name?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
+    setEditCategoryNames(initialCategories);
+    setCustomCategoryName("");
     setEditEventDate(detail.event_date || "");
     setEditTags(detail.tags.join(", "));
     setEditIsPinned(detail.is_pinned);
@@ -260,16 +267,6 @@ export default function DocumentDetailPage({ params }: PageProps) {
     setVersionSnapshotError("");
     setSelectedVersionNo(null);
   }, [detail]);
-
-  useEffect(() => {
-    if (!editCategoryName.trim()) {
-      setIsCustomCategory(false);
-      return;
-    }
-    if (categoryOptions.includes(editCategoryName)) {
-      setIsCustomCategory(false);
-    }
-  }, [categoryOptions, editCategoryName]);
 
   useEffect(() => {
     if (!detail || detail.versions.length === 0) {
@@ -306,12 +303,42 @@ export default function DocumentDetailPage({ params }: PageProps) {
     };
   }, [detail, diffFromVersionNo, diffToVersionNo]);
 
+  const toggleCategorySelection = (categoryName: string) => {
+    const normalized = categoryName.trim();
+    if (!normalized) return;
+    setEditCategoryNames((prev) => {
+      if (prev.includes(normalized)) {
+        return prev.filter((name) => name !== normalized);
+      }
+      return [...prev, normalized];
+    });
+  };
+
+  const addCustomCategorySelection = () => {
+    const normalized = customCategoryName.trim();
+    if (!normalized) return;
+    setEditCategoryNames((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
+    setCustomCategoryName("");
+  };
+
+  const removeCategorySelection = (categoryName: string) => {
+    setEditCategoryNames((prev) => prev.filter((name) => name !== categoryName));
+  };
+
   const resetEditState = () => {
     if (!detail) return;
     setEditTitle(detail.title);
     setEditDescriptionHtml(normalizeRichContentHtml(detail.description || ""));
     setEditSummary(detail.summary || "");
-    setEditCategoryName(detail.category || "");
+    const initialCategories = Array.from(
+      new Set(
+        (detail.categories && detail.categories.length > 0 ? detail.categories : detail.category ? [detail.category] : [])
+          .map((name) => name?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
+    setEditCategoryNames(initialCategories);
+    setCustomCategoryName("");
     setEditEventDate(detail.event_date || "");
     setEditTags(detail.tags.join(", "));
     setEditIsPinned(detail.is_pinned);
@@ -333,7 +360,8 @@ export default function DocumentDetailPage({ params }: PageProps) {
         title: editTitle.trim(),
         description: normalizeRichContentHtml(editDescriptionHtml),
         summary: editSummary,
-        category_name: editCategoryName.trim() || null,
+        category_name: editCategoryNames[0] || null,
+        category_names: editCategoryNames,
         event_date: editEventDate || null,
         tags: parseTagInput(editTags),
         is_pinned: editIsPinned,
@@ -477,7 +505,7 @@ export default function DocumentDetailPage({ params }: PageProps) {
         <article className="rounded-lg border border-stone-200 bg-panel p-4 shadow-panel">
           <h2 className="text-2xl font-semibold text-stone-900">{detail.title}</h2>
           <p className="mt-1 text-sm text-stone-600">
-            카테고리 {detail.category || "미분류"} | 이벤트일 {detail.event_date || "-"} | 수집 {formatDateTime(detail.ingested_at)} | 상태{" "}
+            카테고리 {(detail.categories && detail.categories.length > 0 ? detail.categories.join(", ") : detail.category || "미분류")} | 이벤트일 {detail.event_date || "-"} | 수집 {formatDateTime(detail.ingested_at)} | 상태{" "}
             {reviewStatusLabel(detail.review_status)}
           </p>
           {detail.is_pinned ? (
@@ -507,35 +535,48 @@ export default function DocumentDetailPage({ params }: PageProps) {
                   onChange={(e) => setEditEventDate(e.target.value)}
                 />
               </div>
-              <select
-                className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
-                value={isCustomCategory ? "__custom__" : editCategoryName}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value === "__custom__") {
-                    setIsCustomCategory(true);
-                    return;
-                  }
-                  setIsCustomCategory(false);
-                  setEditCategoryName(value);
-                }}
-              >
-                <option value="">카테고리 선택</option>
-                {categoryOptions.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-                <option value="__custom__">직접 입력</option>
-              </select>
-              {isCustomCategory ? (
-                <input
-                  className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
-                  value={editCategoryName}
-                  onChange={(e) => setEditCategoryName(e.target.value)}
-                  placeholder="신규 카테고리명"
-                />
-              ) : null}
+              <div className="space-y-2 rounded border border-stone-200 p-2">
+                <p className="text-xs font-semibold text-stone-700">카테고리(복수 선택 가능)</p>
+                <div className="grid max-h-28 grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-x-2 gap-y-1 overflow-auto rounded border border-stone-200 bg-white p-2">
+                  {categoryOptions.map((name) => (
+                    <label key={name} className="flex min-w-0 items-center gap-2 text-xs text-stone-700">
+                      <input type="checkbox" checked={editCategoryNames.includes(name)} onChange={() => toggleCategorySelection(name)} />
+                      <span className="truncate">{name}</span>
+                    </label>
+                  ))}
+                  {categoryOptions.length === 0 ? <p className="text-xs text-stone-500">등록된 카테고리가 없습니다.</p> : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    className="w-full rounded border border-stone-300 px-2 py-1 text-sm"
+                    value={customCategoryName}
+                    onChange={(e) => setCustomCategoryName(e.target.value)}
+                    placeholder="신규 카테고리명"
+                  />
+                  <button
+                    type="button"
+                    className="rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 hover:bg-stone-50"
+                    onClick={addCustomCategorySelection}
+                  >
+                    추가
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {editCategoryNames.length === 0 ? <span className="text-[11px] text-stone-500">선택된 카테고리 없음</span> : null}
+                  {editCategoryNames.map((name, idx) => (
+                    <button
+                      key={name}
+                      type="button"
+                      className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] ${idx === 0 ? "border-accent bg-accent/10 text-accent" : "border-stone-300 bg-white text-stone-700"}`}
+                      title={idx === 0 ? "기본 카테고리" : "보조 카테고리"}
+                      onClick={() => removeCategorySelection(name)}
+                    >
+                      <span>{name}</span>
+                      <span>×</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               {categoryOptionsLoading ? <p className="text-xs text-stone-500">카테고리 목록 로딩 중...</p> : null}
               {categoryOptionsError ? <p className="text-xs text-amber-700">목록 로드 실패: {categoryOptionsError}</p> : null}
 
