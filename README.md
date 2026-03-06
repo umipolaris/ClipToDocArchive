@@ -182,6 +182,10 @@ cd ClipToDocArchive
 cp infra/env/.env.common.example infra/env/.env.common
 ```
 
+참고:
+- 최근 Makefile은 `make up`, `make first-run`, `make bootstrap-admin` 실행 시 `.env.common`/`.env.<profile>`이 없으면 `.example`에서 자동 생성합니다.
+- 수동 복사를 원하면 위 명령을 그대로 사용하면 됩니다.
+
 필수 확인 값:
 - `SESSION_SECRET` (운영 전 반드시 변경)
 - `POSTGRES_PASSWORD`
