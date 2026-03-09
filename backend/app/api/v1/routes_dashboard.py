@@ -208,6 +208,67 @@ def _derive_task_kind(category: str) -> DashboardTaskKind:
     return DashboardTaskKind.TODO
 
 
+def _task_file_download_path(file_id: UUID | None) -> str | None:
+    if file_id is None:
+        return None
+    return f"/files/{file_id}/download"
+
+
+def _normalize_task_linked_file(
+    db: Session,
+    linked_document_id: UUID | None,
+    linked_file_id: UUID | None,
+) -> tuple[UUID | None, UUID | None]:
+    if linked_document_id is None and linked_file_id is None:
+        return None, None
+    if linked_document_id is None or linked_file_id is None:
+        raise HTTPException(status_code=400, detail="linked_document_id and linked_file_id must be provided together")
+    if db.get(Document, linked_document_id) is None:
+        raise HTTPException(status_code=400, detail="linked_document_id not found")
+    relation = db.execute(
+        select(DocumentFile.document_id)
+        .where(DocumentFile.document_id == linked_document_id, DocumentFile.file_id == linked_file_id)
+        .limit(1)
+    ).scalar_one_or_none()
+    if relation is None:
+        raise HTTPException(status_code=400, detail="linked_file_id does not belong to linked_document_id")
+    return linked_document_id, linked_file_id
+
+
+def _task_with_link_meta_stmt():  # noqa: ANN202
+    return (
+        select(
+            DashboardTask,
+            Document.title.label("linked_document_title"),
+            File.original_filename.label("linked_file_name"),
+        )
+        .outerjoin(Document, Document.id == DashboardTask.linked_document_id)
+        .outerjoin(File, File.id == DashboardTask.linked_file_id)
+    )
+
+
+def _to_dashboard_task_item(
+    task: DashboardTask,
+    *,
+    linked_document_title: str | None,
+    linked_file_name: str | None,
+) -> DashboardTaskItem:
+    return DashboardTaskItem(
+        id=task.id,
+        category=task.category,
+        title=task.title,
+        scheduled_at=task.scheduled_at,
+        all_day=task.all_day,
+        location=task.location,
+        comment=task.comment,
+        linked_document_id=task.linked_document_id,
+        linked_document_title=linked_document_title,
+        linked_file_id=task.linked_file_id,
+        linked_file_name=linked_file_name,
+        linked_file_download_path=_task_file_download_path(task.linked_file_id),
+    )
+
+
 @router.get("/dashboard/summary", response_model=DashboardSummaryResponse)
 def get_dashboard_summary(
     recent_limit: int = Query(10, ge=1, le=50),
@@ -405,22 +466,18 @@ def get_dashboard_tasks(
         start, end, month_key = _month_bounds(month)
 
     rows = db.execute(
-        select(DashboardTask)
+        _task_with_link_meta_stmt()
         .where(DashboardTask.scheduled_at >= start, DashboardTask.scheduled_at < end)
         .order_by(DashboardTask.scheduled_at.asc(), DashboardTask.created_at.asc())
-    ).scalars().all()
+    ).all()
 
     return DashboardTaskListResponse(
         month=month_key,
         items=[
-            DashboardTaskItem(
-                id=row.id,
-                category=row.category,
-                title=row.title,
-                scheduled_at=row.scheduled_at,
-                all_day=row.all_day,
-                location=row.location,
-                comment=row.comment,
+            _to_dashboard_task_item(
+                row[0],
+                linked_document_title=row.linked_document_title,
+                linked_file_name=row.linked_file_name,
             )
             for row in rows
         ],
@@ -434,17 +491,13 @@ def get_dashboard_task(
     _: CurrentUser = Depends(require_roles(UserRole.VIEWER, UserRole.REVIEWER, UserRole.EDITOR, UserRole.ADMIN)),
     db: Session = Depends(get_db),
 ) -> DashboardTaskItem:
-    row = db.get(DashboardTask, task_id)
+    row = db.execute(_task_with_link_meta_stmt().where(DashboardTask.id == task_id).limit(1)).first()
     if row is None:
         raise HTTPException(status_code=404, detail="task not found")
-    return DashboardTaskItem(
-        id=row.id,
-        category=row.category,
-        title=row.title,
-        scheduled_at=row.scheduled_at,
-        all_day=row.all_day,
-        location=row.location,
-        comment=row.comment,
+    return _to_dashboard_task_item(
+        row[0],
+        linked_document_title=row.linked_document_title,
+        linked_file_name=row.linked_file_name,
     )
 
 
@@ -466,6 +519,7 @@ def create_dashboard_task(
 
     allow_all_day = bool(settings_row.allow_all_day)
     all_day = bool(req.all_day) if allow_all_day else False
+    linked_document_id, linked_file_id = _normalize_task_linked_file(db, req.linked_document_id, req.linked_file_id)
 
     task = DashboardTask(
         kind=_derive_task_kind(category),
@@ -475,20 +529,21 @@ def create_dashboard_task(
         all_day=all_day,
         location=req.location.strip() if settings_row.use_location and req.location and req.location.strip() else None,
         comment=req.comment.strip() if settings_row.use_comment and req.comment and req.comment.strip() else None,
+        linked_document_id=linked_document_id,
+        linked_file_id=linked_file_id,
         created_by=current_user.id,
     )
     db.add(task)
     db.commit()
     db.refresh(task)
 
-    return DashboardTaskItem(
-        id=task.id,
-        category=task.category,
-        title=task.title,
-        scheduled_at=task.scheduled_at,
-        all_day=task.all_day,
-        location=task.location,
-        comment=task.comment,
+    row = db.execute(_task_with_link_meta_stmt().where(DashboardTask.id == task.id).limit(1)).first()
+    if row is None:
+        raise HTTPException(status_code=500, detail="task lookup failed after create")
+    return _to_dashboard_task_item(
+        row[0],
+        linked_document_title=row.linked_document_title,
+        linked_file_name=row.linked_file_name,
     )
 
 
@@ -515,6 +570,7 @@ def update_dashboard_task(
 
     allow_all_day = bool(settings_row.allow_all_day)
     all_day = bool(req.all_day) if allow_all_day else False
+    linked_document_id, linked_file_id = _normalize_task_linked_file(db, req.linked_document_id, req.linked_file_id)
 
     task.category = category
     task.kind = _derive_task_kind(category)
@@ -523,19 +579,20 @@ def update_dashboard_task(
     task.all_day = all_day
     task.location = req.location.strip() if settings_row.use_location and req.location and req.location.strip() else None
     task.comment = req.comment.strip() if settings_row.use_comment and req.comment and req.comment.strip() else None
+    task.linked_document_id = linked_document_id
+    task.linked_file_id = linked_file_id
     task.updated_at = _now()
     db.add(task)
     db.commit()
     db.refresh(task)
 
-    return DashboardTaskItem(
-        id=task.id,
-        category=task.category,
-        title=task.title,
-        scheduled_at=task.scheduled_at,
-        all_day=task.all_day,
-        location=task.location,
-        comment=task.comment,
+    row = db.execute(_task_with_link_meta_stmt().where(DashboardTask.id == task.id).limit(1)).first()
+    if row is None:
+        raise HTTPException(status_code=500, detail="task lookup failed after update")
+    return _to_dashboard_task_item(
+        row[0],
+        linked_document_title=row.linked_document_title,
+        linked_file_name=row.linked_file_name,
     )
 
 

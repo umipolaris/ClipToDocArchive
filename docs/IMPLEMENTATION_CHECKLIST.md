@@ -99,3 +99,12 @@
 - [x] 마이그레이션 규칙 검사 스크립트(`backend/scripts/check_migration_rules.py`) + CI gate
 - [x] 운영 지표/알림 보강(`ingest_success_rate_1h`, `ingest_jobs_backlog`, `search_request_duration_seconds`)
 - [x] 릴리즈 체크리스트 및 stage 환경파일 추가(`docs/RELEASE_CHECKLIST.md`, `infra/env/.env.stage`)
+
+## 9) 2026-03-09 대시보드 일정 연동/안정화
+- [x] 회의 일정 수정 시 동일 날짜 아카이브 게시물 조회 + 첨부파일 선택 연동 UI 추가
+- [x] 일정 저장 요청에 `linked_document_id`/`linked_file_id` 전달 및 서버 저장 검증(응답 불일치 시 에러 처리)
+- [x] DB 스키마 확장: `dashboard_tasks.linked_document_id`, `linked_file_id` + FK/인덱스 (Alembic `0016_task_document_file_link`)
+- [x] 일정 목록에 연결 첨부 확장자 아이콘/라벨 뱃지 추가 및 즉시 다운로드 지원
+- [x] 일정 상세 페이지에 수정/삭제 액션 추가, 수정 시 대시보드 동일 수정 모달 연결
+- [x] 일정 상세 페이지에 연결 첨부파일명 노출 + 다운로드 링크 추가
+- [x] 일정 목록 기간 조회 race condition 완화(설정 로드 전 요청 차단 + 최신 요청만 반영)

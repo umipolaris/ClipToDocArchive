@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CalendarDays, MapPin, MessageSquare } from "lucide-react";
+import { CalendarDays, MapPin, MessageSquare, Paperclip } from "lucide-react";
 import { PageMenuHeading } from "@/components/layout/PageMenuHeading";
-import { apiGet } from "@/lib/api-client";
+import { apiGet, buildApiUrl } from "@/lib/api-client";
 
 type DashboardTaskItem = {
   id: string;
@@ -14,6 +15,8 @@ type DashboardTaskItem = {
   all_day: boolean;
   location: string | null;
   comment: string | null;
+  linked_file_name: string | null;
+  linked_file_download_path: string | null;
 };
 
 interface PageProps {
@@ -30,9 +33,12 @@ function formatSchedule(task: DashboardTaskItem): string {
 }
 
 export default function DashboardTaskDetailPage({ params }: PageProps) {
+  const router = useRouter();
   const [item, setItem] = useState<DashboardTaskItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +62,42 @@ export default function DashboardTaskDetailPage({ params }: PageProps) {
       cancelled = true;
     };
   }, [params.id]);
+
+  const deleteTask = async () => {
+    if (!item || deleting) return;
+    const confirmed = window.confirm(`'${item.title}' 일정을 삭제할까요?`);
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setActionError("");
+    try {
+      const res = await fetch(buildApiUrl(`/dashboard/tasks/${item.id}`), {
+        method: "DELETE",
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let message = `API error: ${res.status}`;
+        try {
+          const raw = await res.text();
+          if (raw) {
+            const parsed = JSON.parse(raw) as { detail?: unknown };
+            const detail = typeof parsed.detail === "string" ? parsed.detail : raw;
+            message = `API error: ${res.status} ${detail}`.trim();
+          }
+        } catch {
+          // ignore parse error and fallback to status code
+        }
+        throw new Error(message);
+      }
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "일정 삭제 실패");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <section className="space-y-4">
@@ -96,7 +138,40 @@ export default function DashboardTaskDetailPage({ params }: PageProps) {
             </p>
           ) : null}
 
-          <div className="pt-2">
+          {item.linked_file_download_path ? (
+            <div className="rounded border border-stone-200 bg-white px-3 py-2">
+              <p className="text-xs font-semibold text-stone-700">연결 첨부파일</p>
+              <a
+                href={buildApiUrl(item.linked_file_download_path)}
+                className="mt-1 inline-flex max-w-full items-center gap-1 rounded border border-stone-300 bg-stone-50 px-2 py-1 text-sm text-stone-800 hover:bg-stone-100"
+                title={item.linked_file_name || "첨부파일 다운로드"}
+                download
+              >
+                <Paperclip className="h-4 w-4 shrink-0 text-stone-600" />
+                <span className="truncate">{item.linked_file_name || "첨부파일 다운로드"}</span>
+              </a>
+            </div>
+          ) : null}
+
+          {actionError ? <p className="text-sm text-red-700">작업 실패: {actionError}</p> : null}
+
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <button
+              type="button"
+              className="inline-flex items-center rounded border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => router.push(`/dashboard?edit_task_id=${item.id}`)}
+              disabled={deleting}
+            >
+              수정
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => void deleteTask()}
+              disabled={deleting}
+            >
+              {deleting ? "삭제 중..." : "삭제"}
+            </button>
             <Link href="/dashboard" className="inline-flex items-center rounded border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50">
               대시보드로 돌아가기
             </Link>

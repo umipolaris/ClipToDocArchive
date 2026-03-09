@@ -165,6 +165,7 @@ ClipToDocArchive는 문서/파일 업로드를 운영 가능한 아카이브로 
 - 규칙/백필: `rulesets`, `rule_versions`
 - 운영/감사: `audit_logs`, `saved_filters`
 - 대시보드 일정: `dashboard_tasks`, `dashboard_task_settings`
+  - `dashboard_tasks` 주요 확장 컬럼: `linked_document_id`, `linked_file_id` (회의 일정-회의록 첨부 연동)
 - 브랜딩/백업설정: `branding_settings`, `backup_schedule_settings`
 
 인덱스 주요 포인트:
@@ -214,6 +215,9 @@ ClipToDocArchive는 문서/파일 업로드를 운영 가능한 아카이브로 
 - `GET/POST /api/dashboard/tasks`
 - `GET/PATCH/DELETE /api/dashboard/tasks/{task_id}`
 - `GET/PUT /api/dashboard/task-settings`
+- 일정 조회 응답에 첨부 연동 메타 포함:
+  - `linked_document_id`, `linked_document_title`
+  - `linked_file_id`, `linked_file_name`, `linked_file_download_path`
 
 ### 6-5. 브랜딩/백업복구
 
@@ -528,6 +532,7 @@ npm run build
 | 백업 복구 후 401/세션 오류 | DB 승격 후 세션 갱신 필요 | 새로고침 후 재로그인 |
 | 자동 백업 미실행 | beat 미기동 또는 schedule off | `make ps`에서 beat 확인, Admin schedule 상태 확인 |
 | 첨부 복구 API 400 | 확장자/포맷 불일치 | objects/config는 `.tar.gz`, db는 `.dump` 사용 |
+| 일정 첨부 연결 저장 실패 (`서버(DB)에 저장되지 않았습니다`) | 대시보드 첨부연동 마이그레이션 미적용 | `alembic current` 확인 후 `0016_task_document_file_link`까지 `alembic upgrade head`, `api/frontend` 재시작 |
 
 ---
 
@@ -538,6 +543,7 @@ npm run build
 3. `promote-db`는 운영 DB를 교체한다. 반드시 확인 후 실행해야 한다.
 4. 자동 백업은 `beat`가 죽으면 동작하지 않는다.
 5. Linux 자동기동에서 `--build`는 실패 확률을 올린다.
+6. 일정 첨부 연동 기능은 DB 리비전 `0016_task_document_file_link` 적용 전에는 정상 저장되지 않는다.
 
 ---
 
@@ -585,3 +591,22 @@ npm run build
 - 주요 API 경로 추가/삭제
 - DB 스키마(테이블/인덱스) 변경
 - 배포/CI 파이프라인 변경
+
+---
+
+## 21) 최근 업데이트 메모 (2026-03-09)
+
+1. 대시보드 일정에 회의록 첨부 연동 추가
+   - 일정 수정(회의 카테고리)에서 해당 날짜의 아카이브 게시물 목록 조회
+   - 게시물 선택 후 첨부파일 선택/저장
+   - 일정 API 응답에 연결 첨부 메타(`linked_*`) 제공
+2. 일정 UI 보강
+   - 일정 목록: 연결 첨부를 확장자 아이콘/라벨 뱃지로 표시, 클릭 즉시 다운로드
+   - 일정 상세: 첨부파일명 노출 + 다운로드 링크 제공
+   - 일정 상세: 수정/삭제 버튼 추가, 수정 시 대시보드 동일 수정 모달 호출
+3. 일정 목록 기간 안정화
+   - 설정 로드 전 기본 범위 요청 차단
+   - 비동기 경합 시 최신 요청만 반영하도록 목록 요청 시퀀스 보호
+4. DB 스키마 확장
+   - Alembic `0016_task_document_file_link`
+   - `dashboard_tasks.linked_document_id`, `linked_file_id` 컬럼 + FK/인덱스 추가

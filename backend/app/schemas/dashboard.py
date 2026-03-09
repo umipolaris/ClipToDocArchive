@@ -64,6 +64,11 @@ class DashboardTaskItem(BaseModel):
     all_day: bool = False
     location: str | None = None
     comment: str | None = None
+    linked_document_id: UUID | None = None
+    linked_document_title: str | None = None
+    linked_file_id: UUID | None = None
+    linked_file_name: str | None = None
+    linked_file_download_path: str | None = None
 
 
 class DashboardTaskListResponse(BaseModel):
@@ -79,6 +84,8 @@ class DashboardTaskCreateRequest(BaseModel):
     all_day: bool = False
     location: str | None = Field(default=None, max_length=220)
     comment: str | None = Field(default=None, max_length=300)
+    linked_document_id: UUID | None = None
+    linked_file_id: UUID | None = None
 
 
 class DashboardTaskUpdateRequest(BaseModel):
@@ -88,6 +95,8 @@ class DashboardTaskUpdateRequest(BaseModel):
     all_day: bool = False
     location: str | None = Field(default=None, max_length=220)
     comment: str | None = Field(default=None, max_length=300)
+    linked_document_id: UUID | None = None
+    linked_file_id: UUID | None = None
 
 
 class DashboardTaskSettingsResponse(BaseModel):

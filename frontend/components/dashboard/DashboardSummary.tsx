@@ -1,6 +1,7 @@
 "use client";
 
-import { CSSProperties, FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { CSSProperties, FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -24,6 +25,7 @@ import {
   ListFilter,
   MapPin,
   MessageSquare,
+  Paperclip,
   Pencil,
   Pin,
   Plus,
@@ -93,6 +95,37 @@ type DashboardTaskItem = {
   all_day: boolean;
   location: string | null;
   comment: string | null;
+  linked_document_id: string | null;
+  linked_document_title: string | null;
+  linked_file_id: string | null;
+  linked_file_name: string | null;
+  linked_file_download_path: string | null;
+};
+
+type ArchiveDocumentListItem = {
+  id: string;
+  title: string;
+  event_date: string | null;
+  file_count: number;
+};
+
+type ArchiveDocumentListResponse = {
+  items: ArchiveDocumentListItem[];
+  page: number;
+  size: number;
+  total: number;
+};
+
+type ArchiveDocumentFileItem = {
+  id: string;
+  original_filename: string;
+  download_path: string;
+};
+
+type ArchiveDocumentDetailResponse = {
+  id: string;
+  title: string;
+  files: ArchiveDocumentFileItem[];
 };
 
 type DashboardTaskListResponse = {
@@ -186,6 +219,10 @@ function isTomorrowKey(dateKey: string): boolean {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   return dateKey === dateKeyFromDate(tomorrow);
+}
+
+function isMeetingCategory(category: string): boolean {
+  return category.toLowerCase().includes("회의");
 }
 
 function parseMonthKey(monthKey: string): { year: number; month: number } {
@@ -391,6 +428,15 @@ function fileExtensionMeta(ext: string | null | undefined): { label: string; ico
   return { label: normalized.toUpperCase(), icon: FileText, className: "border-stone-300 bg-stone-50 text-stone-700" };
 }
 
+function extensionFromFilename(filename: string | null | undefined): string | null {
+  if (!filename) return null;
+  const token = filename.trim();
+  if (!token) return null;
+  const dot = token.lastIndexOf(".");
+  if (dot < 0 || dot === token.length - 1) return null;
+  return token.slice(dot + 1).toLowerCase();
+}
+
 function loadLocalTaskSettings(): DashboardTaskSettingsResponse | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(LOCAL_TASK_SETTINGS_KEY);
@@ -449,6 +495,10 @@ function saveLocalTaskSettings(settings: DashboardTaskSettingsResponse): void {
 }
 
 export function DashboardSummary() {
+  const searchParams = useSearchParams();
+  const editTaskQueryInflightRef = useRef<string | null>(null);
+  const listTasksRequestSeqRef = useRef(0);
+
   const [data, setData] = useState<DashboardSummaryResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -478,6 +528,15 @@ export function DashboardSummary() {
   const [taskAllDay, setTaskAllDay] = useState(false);
   const [taskLocation, setTaskLocation] = useState("");
   const [taskComment, setTaskComment] = useState("");
+  const [taskLinkedDocumentId, setTaskLinkedDocumentId] = useState("");
+  const [taskLinkedDocumentTitle, setTaskLinkedDocumentTitle] = useState("");
+  const [taskLinkedFileId, setTaskLinkedFileId] = useState("");
+  const [archiveDocumentsLoading, setArchiveDocumentsLoading] = useState(false);
+  const [archiveDocumentsError, setArchiveDocumentsError] = useState("");
+  const [archiveDocuments, setArchiveDocuments] = useState<ArchiveDocumentListItem[]>([]);
+  const [archiveFilesLoading, setArchiveFilesLoading] = useState(false);
+  const [archiveFilesError, setArchiveFilesError] = useState("");
+  const [archiveFiles, setArchiveFiles] = useState<ArchiveDocumentFileItem[]>([]);
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsSubmitting, setSettingsSubmitting] = useState(false);
@@ -601,23 +660,29 @@ export function DashboardSummary() {
   }, [loadCalendarTasks, monthKey]);
 
   const loadListTasks = useCallback(async (startAtIso: string, endAtIso: string) => {
+    const requestSeq = listTasksRequestSeqRef.current + 1;
+    listTasksRequestSeqRef.current = requestSeq;
     setListTasksLoading(true);
     setListTasksError("");
     try {
       const query = `start_at=${encodeURIComponent(startAtIso)}&end_at=${encodeURIComponent(endAtIso)}`;
       const res = await apiGet<DashboardTaskListResponse>(`/dashboard/tasks?${query}`);
+      if (listTasksRequestSeqRef.current !== requestSeq) return;
       setListTasks(res.items || []);
     } catch (err) {
+      if (listTasksRequestSeqRef.current !== requestSeq) return;
       setListTasksError(err instanceof Error ? err.message : "일정 목록 로드 실패");
       setListTasks([]);
     } finally {
+      if (listTasksRequestSeqRef.current !== requestSeq) return;
       setListTasksLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    if (taskSettingsLoading) return;
     void loadListTasks(taskListWindow.startAtIso, taskListWindow.endAtIso);
-  }, [loadListTasks, taskListWindow.endAtIso, taskListWindow.startAtIso]);
+  }, [loadListTasks, taskListWindow.endAtIso, taskListWindow.startAtIso, taskSettingsLoading]);
 
   useEffect(() => {
     if (taskFilter === "ALL") return;
@@ -702,6 +767,13 @@ export function DashboardSummary() {
       setTaskAllDay(false);
       setTaskLocation("");
       setTaskComment("");
+      setTaskLinkedDocumentId("");
+      setTaskLinkedDocumentTitle("");
+      setTaskLinkedFileId("");
+      setArchiveDocumentsError("");
+      setArchiveDocuments([]);
+      setArchiveFilesError("");
+      setArchiveFiles([]);
     },
     [taskSettings.categories, taskSettings.default_time],
   );
@@ -725,6 +797,13 @@ export function DashboardSummary() {
       setTaskAllDay(item.all_day);
       setTaskLocation(item.location || "");
       setTaskComment(item.comment || "");
+      setTaskLinkedDocumentId(item.linked_document_id || "");
+      setTaskLinkedDocumentTitle(item.linked_document_title || "");
+      setTaskLinkedFileId(item.linked_file_id || "");
+      setArchiveDocumentsError("");
+      setArchiveDocuments([]);
+      setArchiveFilesError("");
+      setArchiveFiles([]);
       setTaskModalOpen(true);
     },
     [taskSettings.categories, taskSettings.default_time],
@@ -735,6 +814,151 @@ export function DashboardSummary() {
     setEditingTaskId(null);
     setTaskFormError("");
   }, []);
+
+  const clearEditTaskIdQuery = useCallback(() => {
+    if (!searchParams.has("edit_task_id")) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("edit_task_id");
+    const qs = next.toString();
+    if (typeof window === "undefined") return;
+    const nextUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const editTaskId = (searchParams.get("edit_task_id") || "").trim();
+    if (!editTaskId || taskSettingsLoading) return;
+    if (editTaskQueryInflightRef.current === editTaskId) return;
+    editTaskQueryInflightRef.current = editTaskId;
+
+    let cancelled = false;
+    async function openTaskModalFromQuery() {
+      try {
+        const task = await apiGet<DashboardTaskItem>(`/dashboard/tasks/${encodeURIComponent(editTaskId)}`);
+        if (!cancelled) {
+          openTaskEditModal(task);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setListTasksError(err instanceof Error ? err.message : "일정 수정창 로드 실패");
+        }
+      } finally {
+        if (!cancelled) {
+          editTaskQueryInflightRef.current = null;
+          clearEditTaskIdQuery();
+        }
+      }
+    }
+
+    void openTaskModalFromQuery();
+    return () => {
+      cancelled = true;
+      editTaskQueryInflightRef.current = null;
+    };
+  }, [clearEditTaskIdQuery, openTaskEditModal, searchParams, taskSettingsLoading]);
+
+  const loadArchiveDocumentsForDate = useCallback(
+    async (dateKey: string) => {
+      if (!dateKey) {
+        setArchiveDocuments([]);
+        return;
+      }
+      setArchiveDocumentsLoading(true);
+      setArchiveDocumentsError("");
+      try {
+        const query = `page=1&size=100&event_date_from=${encodeURIComponent(dateKey)}&event_date_to=${encodeURIComponent(
+          dateKey,
+        )}&sort_by=ingested_at&sort_order=desc`;
+        const res = await apiGet<ArchiveDocumentListResponse>(`/documents?${query}`);
+        const items = (res.items || []).map((doc) => ({
+          id: doc.id,
+          title: doc.title,
+          event_date: doc.event_date,
+          file_count: doc.file_count ?? 0,
+        }));
+        const hasCurrentLinkedDocument = !!taskLinkedDocumentId && items.some((doc) => doc.id === taskLinkedDocumentId);
+        const mergedItems =
+          !hasCurrentLinkedDocument && taskLinkedDocumentId
+            ? [
+                {
+                  id: taskLinkedDocumentId,
+                  title: taskLinkedDocumentTitle || "기존 연결 게시물",
+                  event_date: dateKey,
+                  file_count: 0,
+                },
+                ...items,
+              ]
+            : items;
+        setArchiveDocuments(mergedItems);
+      } catch (err) {
+        setArchiveDocumentsError(err instanceof Error ? err.message : "아카이브 게시물 조회 실패");
+        setArchiveDocuments([]);
+      } finally {
+        setArchiveDocumentsLoading(false);
+      }
+    },
+    [taskLinkedDocumentId, taskLinkedDocumentTitle],
+  );
+
+  const loadArchiveFilesForDocument = useCallback(async (documentId: string) => {
+    if (!documentId) {
+      setArchiveFiles([]);
+      return;
+    }
+    setArchiveFilesLoading(true);
+    setArchiveFilesError("");
+    try {
+      const res = await apiGet<ArchiveDocumentDetailResponse>(`/documents/${documentId}`);
+      const files = Array.isArray(res.files)
+        ? res.files.map((file) => ({
+            id: file.id,
+            original_filename: file.original_filename,
+            download_path: file.download_path,
+          }))
+        : [];
+      setArchiveFiles(files);
+      setTaskLinkedDocumentTitle(res.title || "");
+      setTaskLinkedFileId((prev) => (files.some((file) => file.id === prev) ? prev : ""));
+    } catch (err) {
+      setArchiveFilesError(err instanceof Error ? err.message : "첨부파일 조회 실패");
+      setArchiveFiles([]);
+      setTaskLinkedFileId("");
+    } finally {
+      setArchiveFilesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!taskModalOpen || !editingTaskId || !isMeetingCategory(taskCategory)) {
+      setArchiveDocuments([]);
+      setArchiveDocumentsError("");
+      setArchiveFiles([]);
+      setArchiveFilesError("");
+      return;
+    }
+    void loadArchiveDocumentsForDate(taskDate);
+  }, [editingTaskId, loadArchiveDocumentsForDate, taskCategory, taskDate, taskModalOpen]);
+
+  useEffect(() => {
+    if (!taskModalOpen || !editingTaskId || !isMeetingCategory(taskCategory) || !taskLinkedDocumentId) {
+      setArchiveFiles([]);
+      setArchiveFilesError("");
+      setTaskLinkedFileId("");
+      return;
+    }
+    void loadArchiveFilesForDocument(taskLinkedDocumentId);
+  }, [editingTaskId, loadArchiveFilesForDocument, taskCategory, taskLinkedDocumentId, taskModalOpen]);
+
+  useEffect(() => {
+    if (isMeetingCategory(taskCategory)) return;
+    setTaskLinkedDocumentId("");
+    setTaskLinkedDocumentTitle("");
+    setTaskLinkedFileId("");
+    setArchiveDocuments([]);
+    setArchiveDocumentsError("");
+    setArchiveFiles([]);
+    setArchiveFilesError("");
+  }, [taskCategory]);
 
   const submitTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -765,6 +989,16 @@ export function DashboardSummary() {
       setTaskFormError("시간을 입력하세요.");
       return;
     }
+    const linkedDocumentId = taskLinkedDocumentId.trim();
+    const linkedFileId = taskLinkedFileId.trim();
+    if (linkedDocumentId && !linkedFileId) {
+      setTaskFormError("첨부파일까지 선택해야 일정에 연결할 수 있습니다.");
+      return;
+    }
+    if (!linkedDocumentId && linkedFileId) {
+      setTaskFormError("먼저 아카이브 게시물을 선택하세요.");
+      return;
+    }
 
     const datetimeLocal = allDay ? `${taskDate}T00:00:00` : `${taskDate}T${taskTime}:00`;
     const parsed = new Date(datetimeLocal);
@@ -782,12 +1016,22 @@ export function DashboardSummary() {
         all_day: allDay,
         location: taskSettings.use_location ? taskLocation.trim() || null : null,
         comment: taskSettings.use_comment ? taskComment.trim() || null : null,
+        linked_document_id: linkedDocumentId || null,
+        linked_file_id: linkedFileId || null,
       };
+      let savedTask: DashboardTaskItem;
       if (editingTaskId) {
-        await apiPatch<DashboardTaskItem>(`/dashboard/tasks/${editingTaskId}`, payload);
+        savedTask = await apiPatch<DashboardTaskItem>(`/dashboard/tasks/${editingTaskId}`, payload);
       } else {
-        await apiPost<DashboardTaskItem>("/dashboard/tasks", payload);
+        savedTask = await apiPost<DashboardTaskItem>("/dashboard/tasks", payload);
       }
+
+      const expectedLinkedDocumentId = linkedDocumentId || null;
+      const expectedLinkedFileId = linkedFileId || null;
+      if (savedTask.linked_document_id !== expectedLinkedDocumentId || savedTask.linked_file_id !== expectedLinkedFileId) {
+        throw new Error("첨부파일 연결이 서버(DB)에 저장되지 않았습니다. 서버 마이그레이션/배포 상태를 확인하세요.");
+      }
+
       closeTaskModal();
       await Promise.all([
         loadCalendarTasks(monthKey),
@@ -1261,6 +1505,7 @@ export function DashboardSummary() {
                 const itemDateKey = dateKeyFromDate(new Date(item.scheduled_at));
                 const isToday = isTodayKey(itemDateKey);
                 const isTomorrow = isTomorrowKey(itemDateKey);
+                const linkedFileMeta = fileExtensionMeta(extensionFromFilename(item.linked_file_name));
                 const emphasisClass = isToday
                   ? "border-rose-300 bg-rose-50"
                   : isTomorrow
@@ -1273,6 +1518,26 @@ export function DashboardSummary() {
                         <a href={`/dashboard/tasks/${item.id}`} className="min-w-0 flex-1 line-clamp-2 font-semibold leading-5 text-stone-900 hover:text-accent hover:underline">
                           {item.title}
                         </a>
+                        {item.linked_file_download_path ? (
+                          <a
+                            href={buildApiUrl(item.linked_file_download_path)}
+                            className={`inline-flex shrink-0 items-center gap-0.5 rounded border px-1 py-0.5 text-[10px] font-semibold ${
+                              linkedFileMeta ? linkedFileMeta.className : "border-stone-300 bg-white text-stone-700"
+                            }`}
+                            title={item.linked_file_name ? `${item.linked_file_name} 다운로드` : "첨부파일 다운로드"}
+                            aria-label={item.linked_file_name ? `${item.linked_file_name} 다운로드` : "첨부파일 다운로드"}
+                            download
+                          >
+                            {linkedFileMeta ? (
+                              <>
+                                <linkedFileMeta.icon className="h-3 w-3" />
+                                {linkedFileMeta.label}
+                              </>
+                            ) : (
+                              <Paperclip className="h-3 w-3" />
+                            )}
+                          </a>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => openTaskEditModal(item)}
@@ -1592,6 +1857,70 @@ export function DashboardSummary() {
                 maxLength={300}
               />
             </label>
+          ) : null}
+
+          {editingTaskId && isMeetingCategory(taskCategory) ? (
+            <section className="space-y-2 rounded border border-stone-200 bg-stone-50/70 p-2">
+              <p className="text-xs font-semibold text-stone-700">회의록 첨부 연동</p>
+
+              <label className="space-y-1 text-xs">
+                <span className="text-stone-700">같은 날짜 아카이브 게시물</span>
+                <select
+                  className="w-full rounded border border-stone-300 bg-white px-2 py-1.5 text-sm disabled:bg-stone-100"
+                  value={taskLinkedDocumentId}
+                  onChange={(event) => {
+                    const nextDocumentId = event.target.value;
+                    setTaskLinkedDocumentId(nextDocumentId);
+                    setTaskLinkedFileId("");
+                    if (!nextDocumentId) {
+                      setTaskLinkedDocumentTitle("");
+                      setArchiveFiles([]);
+                      setArchiveFilesError("");
+                      return;
+                    }
+                    const selectedDoc = archiveDocuments.find((doc) => doc.id === nextDocumentId);
+                    setTaskLinkedDocumentTitle(selectedDoc?.title || "");
+                  }}
+                  disabled={archiveDocumentsLoading}
+                >
+                  <option value="">연결 안 함</option>
+                  {archiveDocuments.map((doc) => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.title} ({doc.file_count}개 첨부)
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {archiveDocumentsLoading ? <p className="text-[11px] text-stone-500">아카이브 게시물 목록 로딩 중...</p> : null}
+              {archiveDocumentsError ? <p className="text-[11px] text-red-700">게시물 조회 실패: {archiveDocumentsError}</p> : null}
+              {!archiveDocumentsLoading && !archiveDocumentsError && archiveDocuments.length === 0 ? (
+                <p className="text-[11px] text-stone-500">선택한 날짜({taskDate})에 아카이브 게시물이 없습니다.</p>
+              ) : null}
+
+              <label className="space-y-1 text-xs">
+                <span className="text-stone-700">게시물 첨부파일</span>
+                <select
+                  className="w-full rounded border border-stone-300 bg-white px-2 py-1.5 text-sm disabled:bg-stone-100"
+                  value={taskLinkedFileId}
+                  onChange={(event) => setTaskLinkedFileId(event.target.value)}
+                  disabled={!taskLinkedDocumentId || archiveFilesLoading || archiveFiles.length === 0}
+                >
+                  <option value="">{taskLinkedDocumentId ? "첨부파일 선택" : "게시물을 먼저 선택하세요"}</option>
+                  {archiveFiles.map((file) => (
+                    <option key={file.id} value={file.id}>
+                      {file.original_filename}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {archiveFilesLoading ? <p className="text-[11px] text-stone-500">첨부파일 목록 로딩 중...</p> : null}
+              {archiveFilesError ? <p className="text-[11px] text-red-700">첨부파일 조회 실패: {archiveFilesError}</p> : null}
+              {taskLinkedDocumentId && !archiveFilesLoading && !archiveFilesError && archiveFiles.length === 0 ? (
+                <p className="text-[11px] text-stone-500">선택한 게시물에 첨부파일이 없습니다.</p>
+              ) : null}
+            </section>
           ) : null}
 
           {taskFormError ? <p className="text-xs text-red-700">{taskFormError}</p> : null}
