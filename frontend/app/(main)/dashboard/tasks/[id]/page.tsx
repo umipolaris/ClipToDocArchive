@@ -12,6 +12,7 @@ type DashboardTaskItem = {
   category: string;
   title: string;
   scheduled_at: string;
+  ended_at: string | null;
   all_day: boolean;
   location: string | null;
   comment: string | null;
@@ -24,12 +25,18 @@ interface PageProps {
 }
 
 function formatSchedule(task: DashboardTaskItem): string {
-  const dt = new Date(task.scheduled_at);
-  if (Number.isNaN(dt.getTime())) return "-";
+  const startedAt = new Date(task.scheduled_at);
+  if (Number.isNaN(startedAt.getTime())) return "-";
   if (task.all_day) {
-    return `${dt.toLocaleDateString("ko-KR")} (종일)`;
+    return `${startedAt.toLocaleDateString("ko-KR")} (종일)`;
   }
-  return dt.toLocaleString("ko-KR");
+  if (task.ended_at) {
+    const endedAt = new Date(task.ended_at);
+    if (!Number.isNaN(endedAt.getTime()) && endedAt.getTime() > startedAt.getTime()) {
+      return `${startedAt.toLocaleString("ko-KR")} ~ ${endedAt.toLocaleString("ko-KR")}`;
+    }
+  }
+  return startedAt.toLocaleString("ko-KR");
 }
 
 export default function DashboardTaskDetailPage({ params }: PageProps) {

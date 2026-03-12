@@ -208,6 +208,17 @@ def _derive_task_kind(category: str) -> DashboardTaskKind:
     return DashboardTaskKind.TODO
 
 
+def _normalize_task_ended_at(*, scheduled_at: datetime, ended_at: datetime | None, all_day: bool) -> datetime | None:
+    if all_day:
+        return None
+    if ended_at is None:
+        return None
+    normalized_end = _to_utc(ended_at)
+    if normalized_end <= scheduled_at:
+        raise HTTPException(status_code=400, detail="ended_at must be greater than scheduled_at")
+    return normalized_end
+
+
 def _task_file_download_path(file_id: UUID | None) -> str | None:
     if file_id is None:
         return None
@@ -258,6 +269,7 @@ def _to_dashboard_task_item(
         category=task.category,
         title=task.title,
         scheduled_at=task.scheduled_at,
+        ended_at=task.ended_at,
         all_day=task.all_day,
         location=task.location,
         comment=task.comment,
@@ -519,13 +531,16 @@ def create_dashboard_task(
 
     allow_all_day = bool(settings_row.allow_all_day)
     all_day = bool(req.all_day) if allow_all_day else False
+    scheduled_at = _to_utc(req.scheduled_at)
+    ended_at = _normalize_task_ended_at(scheduled_at=scheduled_at, ended_at=req.ended_at, all_day=all_day)
     linked_document_id, linked_file_id = _normalize_task_linked_file(db, req.linked_document_id, req.linked_file_id)
 
     task = DashboardTask(
         kind=_derive_task_kind(category),
         category=category,
         title=title,
-        scheduled_at=req.scheduled_at,
+        scheduled_at=scheduled_at,
+        ended_at=ended_at,
         all_day=all_day,
         location=req.location.strip() if settings_row.use_location and req.location and req.location.strip() else None,
         comment=req.comment.strip() if settings_row.use_comment and req.comment and req.comment.strip() else None,
@@ -570,12 +585,15 @@ def update_dashboard_task(
 
     allow_all_day = bool(settings_row.allow_all_day)
     all_day = bool(req.all_day) if allow_all_day else False
+    scheduled_at = _to_utc(req.scheduled_at)
+    ended_at = _normalize_task_ended_at(scheduled_at=scheduled_at, ended_at=req.ended_at, all_day=all_day)
     linked_document_id, linked_file_id = _normalize_task_linked_file(db, req.linked_document_id, req.linked_file_id)
 
     task.category = category
     task.kind = _derive_task_kind(category)
     task.title = title
-    task.scheduled_at = req.scheduled_at
+    task.scheduled_at = scheduled_at
+    task.ended_at = ended_at
     task.all_day = all_day
     task.location = req.location.strip() if settings_row.use_location and req.location and req.location.strip() else None
     task.comment = req.comment.strip() if settings_row.use_comment and req.comment and req.comment.strip() else None

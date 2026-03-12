@@ -92,6 +92,7 @@ type DashboardTaskItem = {
   category: string;
   title: string;
   scheduled_at: string;
+  ended_at: string | null;
   all_day: boolean;
   location: string | null;
   comment: string | null;
@@ -191,12 +192,20 @@ function formatDateTime(value: string): string {
 }
 
 function formatTaskSchedule(item: DashboardTaskItem): string {
-  const dt = new Date(item.scheduled_at);
-  if (Number.isNaN(dt.getTime())) return "-";
+  const startedAt = new Date(item.scheduled_at);
+  if (Number.isNaN(startedAt.getTime())) return "-";
   if (item.all_day) {
-    return `${dateKeyFromDate(dt)} (종일)`;
+    return `${dateKeyFromDate(startedAt)} (종일)`;
   }
-  return dt.toLocaleString("ko-KR");
+  const startedLabel = `${dateKeyFromDate(startedAt)} ${pad2(startedAt.getHours())}:${pad2(startedAt.getMinutes())}`;
+  if (item.ended_at) {
+    const endedAt = new Date(item.ended_at);
+    if (!Number.isNaN(endedAt.getTime()) && endedAt.getTime() > startedAt.getTime()) {
+      const endedLabel = `${dateKeyFromDate(endedAt)} ${pad2(endedAt.getHours())}:${pad2(endedAt.getMinutes())}`;
+      return `${startedLabel} ~ ${endedLabel}`;
+    }
+  }
+  return startedLabel;
 }
 
 function toDateInputValue(value: string): string {
@@ -209,6 +218,12 @@ function toTimeInputValue(value: string): string {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return "09:00";
   return `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+}
+
+function formatTimeValue(value: string): string {
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "-";
+  return dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function isTodayKey(dateKey: string): boolean {
@@ -282,6 +297,18 @@ function normalizeCategoryList(raw: string[]): string[] {
 
 function isValidTime(value: string): boolean {
   return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function addMinutesToTime(value: string, minutes: number): string {
+  if (!isValidTime(value)) return "";
+  const [hourRaw, minuteRaw] = value.split(":");
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return "";
+  const totalMinutes = (hour * 60 + minute + minutes + 24 * 60) % (24 * 60);
+  const nextHour = Math.floor(totalMinutes / 60);
+  const nextMinute = totalMinutes % 60;
+  return `${pad2(nextHour)}:${pad2(nextMinute)}`;
 }
 
 function clampInteger(value: number, min: number, max: number): number {
@@ -498,6 +525,8 @@ export function DashboardSummary() {
   const searchParams = useSearchParams();
   const editTaskQueryInflightRef = useRef<string | null>(null);
   const listTasksRequestSeqRef = useRef(0);
+  const taskListElementRef = useRef<HTMLUListElement | null>(null);
+  const didAutoCenterTodayInListRef = useRef(false);
 
   const [data, setData] = useState<DashboardSummaryResponse | null>(null);
   const [error, setError] = useState("");
@@ -508,6 +537,7 @@ export function DashboardSummary() {
   const [calendarTasks, setCalendarTasks] = useState<DashboardTaskItem[]>([]);
   const [listTasks, setListTasks] = useState<DashboardTaskItem[]>([]);
   const [listTasksLoading, setListTasksLoading] = useState(false);
+  const [listTasksLoadedOnce, setListTasksLoadedOnce] = useState(false);
   const [listTasksError, setListTasksError] = useState("");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("ALL");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -525,6 +555,8 @@ export function DashboardSummary() {
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDate, setTaskDate] = useState(dateKeyFromDate(new Date()));
   const [taskTime, setTaskTime] = useState("09:00");
+  const [taskEndTime, setTaskEndTime] = useState("");
+  const [taskEndTimeTouched, setTaskEndTimeTouched] = useState(false);
   const [taskAllDay, setTaskAllDay] = useState(false);
   const [taskLocation, setTaskLocation] = useState("");
   const [taskComment, setTaskComment] = useState("");
@@ -662,6 +694,7 @@ export function DashboardSummary() {
   const loadListTasks = useCallback(async (startAtIso: string, endAtIso: string) => {
     const requestSeq = listTasksRequestSeqRef.current + 1;
     listTasksRequestSeqRef.current = requestSeq;
+    setListTasksLoadedOnce(false);
     setListTasksLoading(true);
     setListTasksError("");
     try {
@@ -675,6 +708,7 @@ export function DashboardSummary() {
       setListTasks([]);
     } finally {
       if (listTasksRequestSeqRef.current !== requestSeq) return;
+      setListTasksLoadedOnce(true);
       setListTasksLoading(false);
     }
   }, []);
@@ -683,6 +717,10 @@ export function DashboardSummary() {
     if (taskSettingsLoading) return;
     void loadListTasks(taskListWindow.startAtIso, taskListWindow.endAtIso);
   }, [loadListTasks, taskListWindow.endAtIso, taskListWindow.startAtIso, taskSettingsLoading]);
+
+  useEffect(() => {
+    didAutoCenterTodayInListRef.current = false;
+  }, [taskListWindow.endAtIso, taskListWindow.startAtIso]);
 
   useEffect(() => {
     if (taskFilter === "ALL") return;
@@ -723,6 +761,58 @@ export function DashboardSummary() {
     return [...arr].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
   }, [selectedDate, taskFilter, listTasks]);
 
+  useEffect(() => {
+    if (!listTasksLoadedOnce || listTasksLoading) return;
+    if (didAutoCenterTodayInListRef.current) return;
+    const listElement = taskListElementRef.current;
+    if (!listElement) return;
+
+    const todayKey = dateKeyFromDate(new Date());
+    const targetTask = filteredTasks.find((item) => {
+      const itemDateKey = dateKeyFromDate(new Date(item.scheduled_at));
+      return itemDateKey >= todayKey;
+    });
+
+    let cancelled = false;
+    let firstRaf = 0;
+
+    const alignToTargetCenter = (targetId: string): boolean => {
+      const target = Array.from(listElement.querySelectorAll<HTMLElement>("[data-task-id]")).find(
+        (node) => node.dataset.taskId === targetId,
+      );
+      if (!target) return false;
+      const maxScrollTop = Math.max(0, listElement.scrollHeight - listElement.clientHeight);
+      const listRect = listElement.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const relativeTop = targetRect.top - listRect.top + listElement.scrollTop;
+      const targetCenter = relativeTop + targetRect.height / 2;
+      const nextScrollTop = targetCenter - listElement.clientHeight / 2;
+      listElement.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
+      return true;
+    };
+
+    const runAlign = (attempt: number) => {
+      if (cancelled) return;
+      if (!targetTask) {
+        listElement.scrollTop = 0;
+        didAutoCenterTodayInListRef.current = true;
+        return;
+      }
+      const aligned = alignToTargetCenter(targetTask.id);
+      if (aligned || attempt >= 4) {
+        didAutoCenterTodayInListRef.current = true;
+        return;
+      }
+      window.requestAnimationFrame(() => runAlign(attempt + 1));
+    };
+
+    firstRaf = window.requestAnimationFrame(() => runAlign(0));
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(firstRaf);
+    };
+  }, [filteredTasks, listTasksLoadedOnce, listTasksLoading]);
+
   const calendarCells = useMemo(() => buildCalendarCells(monthKey), [monthKey]);
   const taskFilterOptions = useMemo<TaskFilter[]>(() => ["ALL", ...taskSettings.categories], [taskSettings.categories]);
 
@@ -760,10 +850,14 @@ export function DashboardSummary() {
     (dateKey: string) => {
       setTaskFormError("");
       setEditingTaskId(null);
-      setTaskCategory(taskSettings.categories[0] || "할일");
+      const defaultCategory = taskSettings.categories[0] || "할일";
+      const defaultTime = taskSettings.default_time || "09:00";
+      setTaskCategory(defaultCategory);
       setTaskTitle("");
       setTaskDate(dateKey);
-      setTaskTime(taskSettings.default_time || "09:00");
+      setTaskTime(defaultTime);
+      setTaskEndTime(addMinutesToTime(defaultTime, 60));
+      setTaskEndTimeTouched(false);
       setTaskAllDay(false);
       setTaskLocation("");
       setTaskComment("");
@@ -790,10 +884,16 @@ export function DashboardSummary() {
     (item: DashboardTaskItem) => {
       setTaskFormError("");
       setEditingTaskId(item.id);
-      setTaskCategory(taskSettings.categories.includes(item.category) ? item.category : taskSettings.categories[0] || "할일");
+      const nextCategory = taskSettings.categories.includes(item.category) ? item.category : taskSettings.categories[0] || "할일";
+      const startTime = item.all_day ? taskSettings.default_time || "09:00" : toTimeInputValue(item.scheduled_at);
+      const endTimeFromItem = item.ended_at ? toTimeInputValue(item.ended_at) : "";
+      const shouldDefaultEnd = !item.all_day && !endTimeFromItem;
+      setTaskCategory(nextCategory);
       setTaskTitle(item.title);
       setTaskDate(toDateInputValue(item.scheduled_at));
-      setTaskTime(item.all_day ? taskSettings.default_time || "09:00" : toTimeInputValue(item.scheduled_at));
+      setTaskTime(startTime);
+      setTaskEndTime(shouldDefaultEnd ? addMinutesToTime(startTime, 60) : endTimeFromItem);
+      setTaskEndTimeTouched(!shouldDefaultEnd && Boolean(endTimeFromItem));
       setTaskAllDay(item.all_day);
       setTaskLocation(item.location || "");
       setTaskComment(item.comment || "");
@@ -950,6 +1050,18 @@ export function DashboardSummary() {
   }, [editingTaskId, loadArchiveFilesForDocument, taskCategory, taskLinkedDocumentId, taskModalOpen]);
 
   useEffect(() => {
+    if (!taskModalOpen) return;
+    if (taskAllDay) {
+      setTaskEndTime("");
+      setTaskEndTimeTouched(false);
+      return;
+    }
+    if (taskEndTimeTouched) return;
+    const baseTime = isValidTime(taskTime) ? taskTime : taskSettings.default_time || "09:00";
+    setTaskEndTime(addMinutesToTime(baseTime, 60));
+  }, [taskAllDay, taskEndTimeTouched, taskModalOpen, taskSettings.default_time, taskTime]);
+
+  useEffect(() => {
     if (isMeetingCategory(taskCategory)) return;
     setTaskLinkedDocumentId("");
     setTaskLinkedDocumentTitle("");
@@ -989,6 +1101,14 @@ export function DashboardSummary() {
       setTaskFormError("시간을 입력하세요.");
       return;
     }
+    let endTime = taskEndTime.trim();
+    if (!allDay && !endTime && !taskEndTimeTouched) {
+      endTime = addMinutesToTime(taskTime, 60);
+    }
+    if (!allDay && endTime && !isValidTime(endTime)) {
+      setTaskFormError("종료 시간 형식이 올바르지 않습니다.");
+      return;
+    }
     const linkedDocumentId = taskLinkedDocumentId.trim();
     const linkedFileId = taskLinkedFileId.trim();
     if (linkedDocumentId && !linkedFileId) {
@@ -1006,6 +1126,15 @@ export function DashboardSummary() {
       setTaskFormError("날짜/시간 형식이 올바르지 않습니다.");
       return;
     }
+    const parsedEnd = !allDay && endTime ? new Date(`${taskDate}T${endTime}:00`) : null;
+    if (parsedEnd && Number.isNaN(parsedEnd.getTime())) {
+      setTaskFormError("종료 시간 형식이 올바르지 않습니다.");
+      return;
+    }
+    if (parsedEnd && parsedEnd.getTime() <= parsed.getTime()) {
+      setTaskFormError("종료 시간은 시작 시간보다 늦어야 합니다.");
+      return;
+    }
 
     setTaskSubmitting(true);
     try {
@@ -1013,6 +1142,7 @@ export function DashboardSummary() {
         category,
         title,
         scheduled_at: parsed.toISOString(),
+        ended_at: parsedEnd ? parsedEnd.toISOString() : null,
         all_day: allDay,
         location: taskSettings.use_location ? taskLocation.trim() || null : null,
         comment: taskSettings.use_comment ? taskComment.trim() || null : null,
@@ -1030,6 +1160,11 @@ export function DashboardSummary() {
       const expectedLinkedFileId = linkedFileId || null;
       if (savedTask.linked_document_id !== expectedLinkedDocumentId || savedTask.linked_file_id !== expectedLinkedFileId) {
         throw new Error("첨부파일 연결이 서버(DB)에 저장되지 않았습니다. 서버 마이그레이션/배포 상태를 확인하세요.");
+      }
+      const expectedEndedAtMs = parsedEnd ? parsedEnd.getTime() : null;
+      const savedEndedAtMs = savedTask.ended_at ? new Date(savedTask.ended_at).getTime() : null;
+      if (expectedEndedAtMs !== savedEndedAtMs) {
+        throw new Error("종료 시간이 서버(DB)에 저장되지 않았습니다. 백엔드 최신 배포/마이그레이션 상태를 확인하세요.");
       }
 
       closeTaskModal();
@@ -1499,7 +1634,7 @@ export function DashboardSummary() {
           {listTasksError ? <p className="mt-2 text-xs text-red-700">일정 로드 실패: {listTasksError}</p> : null}
           {listTasksLoading ? <p className="mt-2 text-sm text-stone-500">일정 목록 로딩 중...</p> : null}
           {!listTasksLoading ? (
-            <ul className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
+            <ul ref={taskListElementRef} className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
               {filteredTasks.length === 0 ? <li className="text-sm text-stone-500">등록된 일정이 없습니다.</li> : null}
               {filteredTasks.map((item) => {
                 const itemDateKey = dateKeyFromDate(new Date(item.scheduled_at));
@@ -1512,7 +1647,7 @@ export function DashboardSummary() {
                     ? "border-amber-300 bg-amber-50"
                     : "border-stone-200 bg-white";
                 return (
-                  <li key={item.id} className={`rounded border px-2 py-2 text-xs ${emphasisClass}`}>
+                  <li key={item.id} data-task-id={item.id} className={`rounded border px-2 py-2 text-xs ${emphasisClass}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-1">
                         <a href={`/dashboard/tasks/${item.id}`} className="min-w-0 flex-1 line-clamp-2 font-semibold leading-5 text-stone-900 hover:text-accent hover:underline">
@@ -1568,6 +1703,7 @@ export function DashboardSummary() {
                       </div>
                     </div>
                     <p className="mt-1 text-stone-700">일시: {formatTaskSchedule(item)}</p>
+                    {!item.all_day && item.ended_at ? <p className="mt-0.5 text-stone-700">종료: {formatTimeValue(item.ended_at)}</p> : null}
                     {item.location ? (
                       <p className="mt-0.5 inline-flex items-center gap-1 text-stone-700">
                         <MapPin className="h-3.5 w-3.5 text-stone-500" />
@@ -1801,37 +1937,63 @@ export function DashboardSummary() {
           </label>
 
           {taskSettings.allow_all_day ? (
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-2">
               <label className="inline-flex items-center gap-2 rounded border border-stone-300 bg-stone-50 px-2 py-1.5 text-xs text-stone-700">
                 <input type="checkbox" checked={taskAllDay} onChange={(event) => setTaskAllDay(event.target.checked)} />
                 종일 일정
               </label>
               {!taskAllDay ? (
-                <label className="space-y-1 text-xs">
-                  <span className="text-stone-700">시간 *</span>
-                  <input
-                    type="time"
-                    className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm"
-                    value={taskTime}
-                    onChange={(event) => setTaskTime(event.target.value)}
-                    required
-                  />
-                </label>
-              ) : (
-                <div />
-              )}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="space-y-1 text-xs">
+                    <span className="text-stone-700">시작 시간 *</span>
+                    <input
+                      type="time"
+                      className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm"
+                      value={taskTime}
+                      onChange={(event) => setTaskTime(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs">
+                    <span className="text-stone-700">종료 시간 (선택)</span>
+                    <input
+                      type="time"
+                      className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm"
+                      value={taskEndTime}
+                      onChange={(event) => {
+                        setTaskEndTime(event.target.value);
+                        setTaskEndTimeTouched(true);
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : null}
             </div>
           ) : (
-            <label className="space-y-1 text-xs">
-              <span className="text-stone-700">시간 *</span>
-              <input
-                type="time"
-                className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm"
-                value={taskTime}
-                onChange={(event) => setTaskTime(event.target.value)}
-                required
-              />
-            </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="space-y-1 text-xs">
+                <span className="text-stone-700">시작 시간 *</span>
+                <input
+                  type="time"
+                  className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm"
+                  value={taskTime}
+                  onChange={(event) => setTaskTime(event.target.value)}
+                  required
+                />
+              </label>
+              <label className="space-y-1 text-xs">
+                <span className="text-stone-700">종료 시간 (선택)</span>
+                <input
+                  type="time"
+                  className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm"
+                  value={taskEndTime}
+                  onChange={(event) => {
+                    setTaskEndTime(event.target.value);
+                    setTaskEndTimeTouched(true);
+                  }}
+                />
+              </label>
+            </div>
           )}
 
           {taskSettings.use_location ? (

@@ -104,6 +104,7 @@ class DashboardTask(Base):
     category: Mapped[str] = mapped_column(String(80), nullable=False, default="할일")
     title: Mapped[str] = mapped_column(String(220), nullable=False)
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     all_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     location: Mapped[str | None] = mapped_column(String(220))
     comment: Mapped[str | None] = mapped_column(String(300))

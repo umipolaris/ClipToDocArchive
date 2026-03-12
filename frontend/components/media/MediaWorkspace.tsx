@@ -12,7 +12,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { apiDelete, apiGet, apiPost, apiPostFormWithProgress, buildApiUrl } from "@/lib/api-client";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPostFormWithProgress, buildApiUrl } from "@/lib/api-client";
 import { getCurrentUser, type UserRole } from "@/lib/auth";
 import { ModalShell } from "@/components/common/ModalShell";
 import { RichContentView } from "@/components/editor/RichContentView";
@@ -233,7 +233,14 @@ export function MediaWorkspace() {
   const [detail, setDetail] = useState<DocumentDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [detailActionError, setDetailActionError] = useState("");
+  const [detailNotice, setDetailNotice] = useState("");
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
+  const [detailEditMode, setDetailEditMode] = useState(false);
+  const [detailEditTitle, setDetailEditTitle] = useState("");
+  const [detailEditEventDate, setDetailEditEventDate] = useState("");
+  const [detailEditDescription, setDetailEditDescription] = useState("");
+  const [detailActionBusy, setDetailActionBusy] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const progressHideTimerRef = useRef<number | null>(null);
@@ -363,6 +370,20 @@ export function MediaWorkspace() {
   useEffect(() => {
     const detailMedia = detail?.files.map(toMediaPreviewFromDetail).filter((value): value is MediaPreviewFile => value !== null) || [];
     setActiveMediaId(detailMedia[0]?.id ?? null);
+  }, [detail]);
+
+  useEffect(() => {
+    if (!detail) {
+      setDetailEditMode(false);
+      setDetailEditTitle("");
+      setDetailEditEventDate("");
+      setDetailEditDescription("");
+      return;
+    }
+    setDetailEditTitle(detail.title || "");
+    setDetailEditEventDate(detail.event_date || "");
+    setDetailEditDescription(detail.description || "");
+    setDetailEditMode(false);
   }, [detail]);
 
   const detailMediaFiles = useMemo(
@@ -503,6 +524,9 @@ export function MediaWorkspace() {
     setModalOpen(true);
     setDetail(null);
     setDetailError("");
+    setDetailActionError("");
+    setDetailNotice("");
+    setDetailEditMode(false);
     setDetailLoading(true);
 
     try {
@@ -523,6 +547,69 @@ export function MediaWorkspace() {
   const loadMore = async () => {
     if (loadingMore || !hasMoreRaw) return;
     await loadMediaBatch({ reset: false, startPage: nextRawPage });
+  };
+
+  const saveDetail = async () => {
+    if (!detail) return;
+    if (!canUpload) {
+      setDetailActionError("이 계정은 게시물 수정 권한이 없습니다.");
+      return;
+    }
+    if (!detailEditTitle.trim()) {
+      setDetailActionError("제목은 필수입니다.");
+      return;
+    }
+    if (!detailEditEventDate) {
+      setDetailActionError("날짜는 필수입니다.");
+      return;
+    }
+
+    setDetailActionBusy(true);
+    setDetailActionError("");
+    setDetailNotice("");
+    try {
+      const description = detailEditDescription.trim();
+      const updated = await apiPatch<DocumentDetailResponse>(`/documents/${detail.id}`, {
+        title: detailEditTitle.trim(),
+        event_date: detailEditEventDate,
+        description,
+        summary: description ? description.slice(0, 400) : null,
+      });
+      setDetail(updated);
+      setDetailEditMode(false);
+      setDetailNotice("게시물이 수정되었습니다.");
+      await loadMediaBatch({ reset: true, startPage: 1 });
+    } catch (err) {
+      setDetailActionError(err instanceof Error ? err.message : "게시물 수정 실패");
+    } finally {
+      setDetailActionBusy(false);
+    }
+  };
+
+  const deleteDetail = async () => {
+    if (!detail) return;
+    if (!canUpload) {
+      setDetailActionError("이 계정은 게시물 삭제 권한이 없습니다.");
+      return;
+    }
+    const confirmed = window.confirm(`게시물을 삭제하시겠습니까?\n${detail.title}`);
+    if (!confirmed) return;
+
+    setDetailActionBusy(true);
+    setDetailActionError("");
+    setDetailNotice("");
+    try {
+      await apiDelete<{ status: string; document_id: string }>(`/documents/${detail.id}`);
+      setModalOpen(false);
+      setDetail(null);
+      setDetailEditMode(false);
+      setNotice("게시물이 삭제되었습니다.");
+      await loadMediaBatch({ reset: true, startPage: 1 });
+    } catch (err) {
+      setDetailActionError(err instanceof Error ? err.message : "게시물 삭제 실패");
+    } finally {
+      setDetailActionBusy(false);
+    }
   };
 
   return (
@@ -791,28 +878,125 @@ export function MediaWorkspace() {
           setModalOpen(false);
           setDetail(null);
           setDetailError("");
+          setDetailActionError("");
+          setDetailNotice("");
+          setDetailEditMode(false);
         }}
         title={detail?.title || "미디어 상세"}
         maxWidthClassName="max-w-6xl"
       >
         {detailLoading ? <p className="text-sm text-stone-500">상세 정보를 불러오는 중...</p> : null}
         {detailError ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{detailError}</p> : null}
+        {detailActionError ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{detailActionError}</p> : null}
+        {detailNotice ? <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{detailNotice}</p> : null}
         {!detailLoading && !detailError && detail ? (
           <div className="space-y-3">
-            <div className="rounded border border-stone-200 bg-white p-3 text-xs text-stone-700">
-              <p className="text-sm font-semibold text-stone-900">{detail.title}</p>
-              <p className="mt-1">날짜: {detail.event_date || "-"}</p>
-              <p>업로드: {formatDateTime(detail.ingested_at)}</p>
-              <div className="mt-2">
-                {detail.description?.trim() ? (
-                  <RichContentView
-                    html={detail.description}
-                    className="text-xs leading-5 text-stone-700 [&_p]:m-0 [&_h1]:m-0 [&_h2]:m-0 [&_h3]:m-0"
-                  />
+            {canUpload ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {detailEditMode ? (
+                  <>
+                    <button
+                      type="button"
+                      className="rounded border border-emerald-700 bg-emerald-700 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                      onClick={() => void saveDetail()}
+                      disabled={detailActionBusy}
+                    >
+                      {detailActionBusy ? "저장 중..." : "저장"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-60"
+                      onClick={() => {
+                        setDetailEditTitle(detail.title || "");
+                        setDetailEditEventDate(detail.event_date || "");
+                        setDetailEditDescription(detail.description || "");
+                        setDetailEditMode(false);
+                        setDetailActionError("");
+                      }}
+                      disabled={detailActionBusy}
+                    >
+                      취소
+                    </button>
+                  </>
                 ) : (
-                  <p>설명 없음</p>
+                  <button
+                    type="button"
+                    className="rounded border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-60"
+                    onClick={() => {
+                      setDetailEditTitle(detail.title || "");
+                      setDetailEditEventDate(detail.event_date || "");
+                      setDetailEditDescription(detail.description || "");
+                      setDetailEditMode(true);
+                      setDetailActionError("");
+                      setDetailNotice("");
+                    }}
+                    disabled={detailActionBusy}
+                  >
+                    수정
+                  </button>
                 )}
+                <button
+                  type="button"
+                  className="rounded border border-red-300 bg-red-50 px-3 py-1 text-xs text-red-700 hover:bg-red-100 disabled:opacity-60"
+                  onClick={() => void deleteDetail()}
+                  disabled={detailActionBusy}
+                >
+                  {detailActionBusy ? "처리 중..." : "삭제"}
+                </button>
               </div>
+            ) : null}
+
+            <div className="rounded border border-stone-200 bg-white p-3 text-xs text-stone-700">
+              {detailEditMode ? (
+                <div className="space-y-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-700">제목 *</span>
+                    <input
+                      type="text"
+                      className="rounded border border-stone-300 px-2 py-1.5 text-sm"
+                      value={detailEditTitle}
+                      onChange={(event) => setDetailEditTitle(event.target.value)}
+                      disabled={detailActionBusy}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-700">날짜 *</span>
+                    <input
+                      type="date"
+                      className="rounded border border-stone-300 px-2 py-1.5 text-sm"
+                      value={detailEditEventDate}
+                      onChange={(event) => setDetailEditEventDate(event.target.value)}
+                      disabled={detailActionBusy}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-700">설명</span>
+                    <textarea
+                      className="min-h-24 rounded border border-stone-300 px-2 py-1.5 text-sm"
+                      value={detailEditDescription}
+                      onChange={(event) => setDetailEditDescription(event.target.value)}
+                      disabled={detailActionBusy}
+                    />
+                  </label>
+                  <p className="text-[11px] text-stone-500">저장 시 제목/날짜/설명만 변경됩니다.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-stone-900">{detail.title}</p>
+                  <p className="mt-1">날짜: {detail.event_date || "-"}</p>
+                  <p>업로드: {formatDateTime(detail.ingested_at)}</p>
+                  <div className="mt-2">
+                    {detail.description?.trim() ? (
+                      <RichContentView
+                        html={detail.description}
+                        className="text-xs leading-5 text-stone-700 [&_p]:m-0 [&_h1]:m-0 [&_h2]:m-0 [&_h3]:m-0"
+                      />
+                    ) : (
+                      <p>설명 없음</p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {activeMedia ? (

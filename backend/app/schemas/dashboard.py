@@ -61,6 +61,7 @@ class DashboardTaskItem(BaseModel):
     category: str
     title: str
     scheduled_at: datetime
+    ended_at: datetime | None = None
     all_day: bool = False
     location: str | None = None
     comment: str | None = None
@@ -81,6 +82,7 @@ class DashboardTaskCreateRequest(BaseModel):
     category: str = Field(min_length=1, max_length=80)
     title: str = Field(min_length=1, max_length=220)
     scheduled_at: datetime
+    ended_at: datetime | None = None
     all_day: bool = False
     location: str | None = Field(default=None, max_length=220)
     comment: str | None = Field(default=None, max_length=300)
@@ -92,6 +94,7 @@ class DashboardTaskUpdateRequest(BaseModel):
     category: str = Field(min_length=1, max_length=80)
     title: str = Field(min_length=1, max_length=220)
     scheduled_at: datetime
+    ended_at: datetime | None = None
     all_day: bool = False
     location: str | None = Field(default=None, max_length=220)
     comment: str | None = Field(default=None, max_length=300)
