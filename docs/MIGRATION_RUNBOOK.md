@@ -106,6 +106,14 @@ cd infra
 '
 ```
 
+추가 확인:
+
+```bash
+cd infra
+./scripts/compose.sh exec -T api alembic current
+# 기대값: 0019_dashboard_milestones (head)
+```
+
 ## 7) Re-open writes
 
 1. `READ_ONLY_MODE=false`로 복귀

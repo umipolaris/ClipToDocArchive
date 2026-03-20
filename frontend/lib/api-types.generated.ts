@@ -296,6 +296,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard/milestones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dashboard Milestones */
+        get: operations["get_dashboard_milestones_api_dashboard_milestones_get"];
+        put?: never;
+        /** Create Dashboard Milestone */
+        post: operations["create_dashboard_milestone_api_dashboard_milestones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/milestones/{milestone_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Dashboard Milestone */
+        delete: operations["delete_dashboard_milestone_api_dashboard_milestones__milestone_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Dashboard Milestone */
+        patch: operations["update_dashboard_milestone_api_dashboard_milestones__milestone_id__patch"];
+        trace?: never;
+    };
     "/api/dashboard/tasks": {
         parameters: {
             query?: never;
@@ -517,6 +553,23 @@ export interface paths {
         };
         /** Download File */
         get: operations["download_file_api_files__file_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/files/{file_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Document File */
+        get: operations["download_document_file_api_documents__id__files__file_id__download_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2109,6 +2162,92 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** DashboardMilestoneCreateRequest */
+        DashboardMilestoneCreateRequest: {
+            /** Title */
+            title: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** End Date */
+            end_date?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Color */
+            color?: string | null;
+        };
+        /** DashboardMilestoneItem */
+        DashboardMilestoneItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** End Date */
+            end_date?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Color */
+            color?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** DashboardMilestoneListResponse */
+        DashboardMilestoneListResponse: {
+            /** Start Year */
+            start_year: number;
+            /** End Year */
+            end_year: number;
+            /** Items */
+            items?: components["schemas"]["DashboardMilestoneItem"][];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+        };
+        /** DashboardMilestoneUpdateRequest */
+        DashboardMilestoneUpdateRequest: {
+            /** Title */
+            title: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** End Date */
+            end_date?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Color */
+            color?: string | null;
+        };
         /** DashboardPinnedCategory */
         DashboardPinnedCategory: {
             /** Category */
@@ -2201,6 +2340,8 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+            /** Ended At */
+            ended_at?: string | null;
             /**
              * All Day
              * @default false
@@ -2210,6 +2351,10 @@ export interface components {
             location?: string | null;
             /** Comment */
             comment?: string | null;
+            /** Linked Document Id */
+            linked_document_id?: string | null;
+            /** Linked File Id */
+            linked_file_id?: string | null;
         };
         /** DashboardTaskItem */
         DashboardTaskItem: {
@@ -2227,6 +2372,8 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+            /** Ended At */
+            ended_at?: string | null;
             /**
              * All Day
              * @default false
@@ -2236,6 +2383,16 @@ export interface components {
             location?: string | null;
             /** Comment */
             comment?: string | null;
+            /** Linked Document Id */
+            linked_document_id?: string | null;
+            /** Linked Document Title */
+            linked_document_title?: string | null;
+            /** Linked File Id */
+            linked_file_id?: string | null;
+            /** Linked File Name */
+            linked_file_name?: string | null;
+            /** Linked File Download Path */
+            linked_file_download_path?: string | null;
         };
         /** DashboardTaskListResponse */
         DashboardTaskListResponse: {
@@ -2351,6 +2508,8 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+            /** Ended At */
+            ended_at?: string | null;
             /**
              * All Day
              * @default false
@@ -2360,6 +2519,10 @@ export interface components {
             location?: string | null;
             /** Comment */
             comment?: string | null;
+            /** Linked Document Id */
+            linked_document_id?: string | null;
+            /** Linked File Id */
+            linked_file_id?: string | null;
         };
         /** DeleteUserResponse */
         DeleteUserResponse: {
@@ -4441,6 +4604,135 @@ export interface operations {
             };
         };
     };
+    get_dashboard_milestones_api_dashboard_milestones_get: {
+        parameters: {
+            query?: {
+                start_year?: number;
+                end_year?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardMilestoneListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_dashboard_milestone_api_dashboard_milestones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardMilestoneCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardMilestoneItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_dashboard_milestone_api_dashboard_milestones__milestone_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_dashboard_milestone_api_dashboard_milestones__milestone_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestone_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardMilestoneUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardMilestoneItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_dashboard_tasks_api_dashboard_tasks_get: {
         parameters: {
             query?: {
@@ -5088,6 +5380,38 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_document_file_api_documents__id__files__file_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
                 file_id: string;
             };
             cookie?: never;

@@ -532,7 +532,7 @@ npm run build
 | 백업 복구 후 401/세션 오류 | DB 승격 후 세션 갱신 필요 | 새로고침 후 재로그인 |
 | 자동 백업 미실행 | beat 미기동 또는 schedule off | `make ps`에서 beat 확인, Admin schedule 상태 확인 |
 | 첨부 복구 API 400 | 확장자/포맷 불일치 | objects/config는 `.tar.gz`, db는 `.dump` 사용 |
-| 일정 첨부 연결 저장 실패 (`서버(DB)에 저장되지 않았습니다`) | 대시보드 첨부연동 마이그레이션 미적용 | `alembic current` 확인 후 `0016_task_document_file_link`까지 `alembic upgrade head`, `api/frontend` 재시작 |
+| 일정 첨부 연결 저장 실패 (`서버(DB)에 저장되지 않았습니다`) | 대시보드 최근 마이그레이션 미적용 | `alembic current` 확인 후 `0019_dashboard_milestones (head)`까지 `alembic upgrade head`, `api/frontend` 재시작 |
 
 ---
 
@@ -543,7 +543,7 @@ npm run build
 3. `promote-db`는 운영 DB를 교체한다. 반드시 확인 후 실행해야 한다.
 4. 자동 백업은 `beat`가 죽으면 동작하지 않는다.
 5. Linux 자동기동에서 `--build`는 실패 확률을 올린다.
-6. 일정 첨부 연동 기능은 DB 리비전 `0016_task_document_file_link` 적용 전에는 정상 저장되지 않는다.
+6. 일정 첨부 연동, 종료시간, 문서별 첨부 표시명, 마일스톤 기능은 최신 DB 리비전 `0019_dashboard_milestones` 적용 전에는 일부 기능이 정상 동작하지 않는다.
 
 ---
 

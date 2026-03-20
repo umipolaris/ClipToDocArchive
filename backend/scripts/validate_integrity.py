@@ -22,6 +22,7 @@ from app.core.config import get_settings
 from app.db.models import (
     BrandingSetting,
     Category,
+    DashboardMilestone,
     Document,
     DocumentComment,
     DocumentFile,
@@ -154,6 +155,7 @@ def table_counts(db: Session) -> dict[str, int]:
         "categories": int(db.execute(select(func.count()).select_from(Category)).scalar_one() or 0),
         "tags": int(db.execute(select(func.count()).select_from(Tag)).scalar_one() or 0),
         "files": int(db.execute(select(func.count()).select_from(File)).scalar_one() or 0),
+        "dashboard_milestones": int(db.execute(select(func.count()).select_from(DashboardMilestone)).scalar_one() or 0),
         "documents": int(db.execute(select(func.count()).select_from(Document)).scalar_one() or 0),
         "document_versions": int(db.execute(select(func.count()).select_from(DocumentVersion)).scalar_one() or 0),
         "document_files": int(db.execute(select(func.count()).select_from(DocumentFile)).scalar_one() or 0),

@@ -332,7 +332,7 @@ docker compose up -d --build
 
 5) 일정 첨부 연결 저장 시 `서버(DB)에 저장되지 않았습니다` 메시지가 뜨는 경우
 - DB 마이그레이션 미적용 상태일 가능성이 큽니다(`linked_document_id`, `linked_file_id` 컬럼 누락).
-- 확인: `cd infra && docker compose exec -T api alembic current` → `0016_task_document_file_link (head)`여야 정상
+- 확인: `cd infra && docker compose exec -T api alembic current` → `0019_dashboard_milestones (head)`여야 정상
 - 조치: `cd infra && docker compose exec -T api alembic upgrade head && docker compose restart api frontend`
 
 ## 빠른 시작(요약)

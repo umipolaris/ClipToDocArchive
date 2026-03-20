@@ -45,6 +45,8 @@ const TIMELINE_START_YEAR = 2025;
 const TIMELINE_END_YEAR = 2032;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MILESTONE_COLOR = "#0F766E";
+const TIMELINE_START = timelineStartDate();
+const TIMELINE_END = timelineEndDate();
 
 function timelineStartDate(): Date {
   return new Date(TIMELINE_START_YEAR, 0, 1, 0, 0, 0, 0);
@@ -58,10 +60,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function percentFromDate(value: string | Date): number {
-  const dt = typeof value === "string" ? new Date(`${value}T00:00:00`) : value;
-  const start = timelineStartDate().getTime();
-  const end = timelineEndDate().getTime();
+function percentFromDate(value: string | Date, options?: { endOfDay?: boolean }): number {
+  const dt =
+    typeof value === "string"
+      ? new Date(`${value}T${options?.endOfDay ? "23:59:59.999" : "00:00:00.000"}`)
+      : value;
+  const start = TIMELINE_START.getTime();
+  const end = TIMELINE_END.getTime();
   const current = dt.getTime();
   if (Number.isNaN(current) || end <= start) return 0;
   return clamp((current - start) / (end - start), 0, 1);
@@ -145,11 +150,22 @@ export function DashboardMilestoneTimeline() {
   );
 
   const currentPercent = useMemo(() => percentFromDate(new Date()), []);
+  const yearTicks = useMemo(
+    () =>
+      Array.from({ length: TIMELINE_END_YEAR - TIMELINE_START_YEAR + 1 }, (_, index) => {
+        const year = TIMELINE_START_YEAR + index;
+        return {
+          year,
+          percent: percentFromDate(new Date(year, 0, 1, 0, 0, 0, 0)),
+        };
+      }),
+    [],
+  );
 
   const hoveredItems = useMemo(() => {
     if (hoverPercent == null) return [];
     const hoveredTime =
-      timelineStartDate().getTime() + (timelineEndDate().getTime() - timelineStartDate().getTime()) * hoverPercent;
+      TIMELINE_START.getTime() + (TIMELINE_END.getTime() - TIMELINE_START.getTime()) * hoverPercent;
     return [...sortedItems]
       .map((item) => {
         const startTime = new Date(`${item.start_date}T00:00:00`).getTime();
@@ -282,34 +298,31 @@ export function DashboardMilestoneTimeline() {
           </div>
         </div>
 
-        <div
-          className="relative mt-3 rounded-xl border border-stone-200 bg-[linear-gradient(90deg,#f5f5f4_0%,#fafaf9_45%,#f5f5f4_100%)] px-3 py-3"
-          onMouseLeave={() => setHoverPercent(null)}
-          onMouseMove={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect();
-            if (rect.width <= 0) return;
-            setHoverPercent(clamp((event.clientX - rect.left) / rect.width, 0, 1));
-          }}
-        >
-          <div className="pointer-events-none absolute inset-x-3 top-1/2 h-px -translate-y-1/2 bg-stone-300" />
-          {Array.from({ length: TIMELINE_END_YEAR - TIMELINE_START_YEAR + 1 }).map((_, index) => {
-            const year = TIMELINE_START_YEAR + index;
-            const tickPercent = index / (TIMELINE_END_YEAR - TIMELINE_START_YEAR || 1);
-            return (
-              <div key={year} className="pointer-events-none absolute bottom-1 top-2" style={{ left: `${tickPercent * 100}%` }}>
-                <div className="absolute bottom-4 top-0 w-px bg-stone-200" />
-                <span className="absolute bottom-0 -translate-x-1/2 text-[10px] font-semibold text-stone-500">{String(year).slice(2)}</span>
+        <div className="relative mt-3 rounded-xl border border-stone-200 bg-[linear-gradient(90deg,#f5f5f4_0%,#fafaf9_45%,#f5f5f4_100%)] px-3 py-3">
+          <div
+            className="relative h-12"
+            onMouseLeave={() => setHoverPercent(null)}
+            onMouseMove={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (rect.width <= 0) return;
+              setHoverPercent(clamp((event.clientX - rect.left) / rect.width, 0, 1));
+            }}
+          >
+            <div className="pointer-events-none absolute inset-x-0 top-[18px] h-px bg-stone-300" />
+            {yearTicks.map(({ year, percent }) => (
+              <div key={year} className="pointer-events-none absolute inset-y-0" style={{ left: `${percent * 100}%` }}>
+                <div className="absolute top-1 h-6 w-px bg-stone-200" />
+                <span className="absolute top-8 -translate-x-1/2 text-[10px] font-semibold text-stone-500">{String(year).slice(2)}</span>
               </div>
-            );
-          })}
+            ))}
+            <div className="pointer-events-none absolute right-0 top-1 h-6 w-px bg-stone-200" />
 
-          <div className="pointer-events-none absolute inset-y-2 z-[1] w-px bg-rose-500/80" style={{ left: `${currentPercent * 100}%` }}>
-            <span className="absolute -top-5 left-1/2 -translate-x-1/2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm">
-              현재
-            </span>
-          </div>
+            <div className="pointer-events-none absolute inset-y-1 z-[1] w-px bg-rose-500/80" style={{ left: `${currentPercent * 100}%` }}>
+              <span className="absolute -top-6 left-1/2 -translate-x-1/2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm">
+                현재
+              </span>
+            </div>
 
-          <div className="relative h-10">
             {loading ? <p className="pt-2 text-xs text-stone-500">마일스톤 로딩 중...</p> : null}
             {!loading && error ? <p className="pt-2 text-xs text-red-700">{error}</p> : null}
             {!loading && !error && sortedItems.length === 0 ? <p className="pt-2 text-xs text-stone-500">등록된 마일스톤이 없습니다.</p> : null}
@@ -318,7 +331,10 @@ export function DashboardMilestoneTimeline() {
               sortedItems.map((item, index) => {
                 const color = normalizeColor(item.color || DEFAULT_MILESTONE_COLOR);
                 const startPercent = easedPercent(percentFromDate(item.start_date), hoverPercent);
-                const endPercent = easedPercent(percentFromDate(item.end_date || item.start_date), hoverPercent);
+                const endPercent = easedPercent(
+                  percentFromDate(item.end_date || item.start_date, { endOfDay: true }),
+                  hoverPercent,
+                );
                 const left = Math.min(startPercent, endPercent) * 100;
                 const width = Math.max(0.75, Math.abs(endPercent - startPercent) * 100);
                 const rowOffset = index % 2 === 0 ? 6 : 22;

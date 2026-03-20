@@ -1898,6 +1898,7 @@ def add_document_files(
             existing_link = _get_document_file_link(db, doc.id, stored.id)
             if existing_link and existing_link.display_filename != display_filename:
                 existing_link.display_filename = display_filename
+                existing_link.updated_at = _now()
                 db.add(existing_link)
                 renamed_file_ids.append(stored.id)
             else:
@@ -1986,6 +1987,7 @@ def replace_document_file(
     if new_file.id == link.file_id:
         if link.display_filename != new_display_filename:
             link.display_filename = new_display_filename
+            link.updated_at = _now()
             db.add(link)
             tags_snapshot = _get_tag_names(db, doc.id)
             normalized_reason = change_reason.strip() or "manual_file_replace"
@@ -2029,11 +2031,13 @@ def replace_document_file(
     ).scalar_one_or_none()
     if duplicate_link:
         duplicate_link.display_filename = new_display_filename
+        duplicate_link.updated_at = _now()
         db.add(duplicate_link)
         db.delete(link)
     else:
         link.file_id = new_file.id
         link.display_filename = new_display_filename
+        link.updated_at = _now()
         db.add(link)
     db.flush()
     _cleanup_orphan_file(db, old_file)
