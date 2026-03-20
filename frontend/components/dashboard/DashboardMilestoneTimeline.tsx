@@ -72,6 +72,14 @@ function formatDateRange(startDate: string, endDate: string | null): string {
   return `${startDate} ~ ${endDate}`;
 }
 
+function todayDateKey(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function normalizeColor(color: string): string {
   const trimmed = color.trim();
   return /^#[0-9A-Fa-f]{6}$/.test(trimmed) ? trimmed.toUpperCase() : DEFAULT_MILESTONE_COLOR;
@@ -87,7 +95,7 @@ function easedPercent(basePercent: number, hoverPercent: number | null): number 
 function buildEmptyForm(): DashboardMilestonePayload {
   return {
     title: "",
-    start_date: `${TIMELINE_START_YEAR}-01-01`,
+    start_date: todayDateKey(),
     end_date: null,
     description: "",
     color: DEFAULT_MILESTONE_COLOR,

@@ -874,8 +874,8 @@ export function DashboardSummary() {
   );
 
   const openTaskModal = useCallback(
-    (dateKey?: string) => {
-      resetTaskFormForDate(dateKey || dateKeyFromDate(new Date()));
+    (dateKey: string) => {
+      resetTaskFormForDate(dateKey);
       setTaskModalOpen(true);
     },
     [resetTaskFormForDate],
@@ -1584,7 +1584,7 @@ export function DashboardSummary() {
             <div className="inline-flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => openTaskModal()}
+                onClick={() => openTaskModal(selectedDate || dateKeyFromDate(new Date()))}
                 className="inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50"
               >
                 <CalendarPlus className="h-3.5 w-3.5" />
