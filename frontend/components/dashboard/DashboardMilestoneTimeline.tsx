@@ -7,6 +7,7 @@ import {
   ListChecks,
   Pencil,
   Plus,
+  Printer,
   Route,
   Save,
   Trash2,
@@ -41,32 +42,48 @@ type DashboardMilestonePayload = {
   color: string | null;
 };
 
-const TIMELINE_START_YEAR = 2025;
-const TIMELINE_END_YEAR = 2032;
+type TimelineLayoutItem = {
+  item: DashboardMilestoneItem;
+  startPercent: number;
+  endPercent: number;
+  left: number;
+  width: number;
+  lane: number;
+  laneCount: number;
+};
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_MILESTONE_COLOR = "#0F766E";
-const TIMELINE_START = timelineStartDate();
-const TIMELINE_END = timelineEndDate();
+const TIMELINE_RANGES = [
+  { key: "2022-2024", label: "22년-24년", startYear: 2022, endYear: 2024 },
+  { key: "2025-2032", label: "25년-32년", startYear: 2025, endYear: 2032 },
+] as const;
+const DEFAULT_RANGE_KEY = "2025-2032";
 
-function timelineStartDate(): Date {
-  return new Date(TIMELINE_START_YEAR, 0, 1, 0, 0, 0, 0);
+function timelineStartDate(startYear: number): Date {
+  return new Date(startYear, 0, 1, 0, 0, 0, 0);
 }
 
-function timelineEndDate(): Date {
-  return new Date(TIMELINE_END_YEAR, 11, 31, 23, 59, 59, 999);
+function timelineEndDate(endYear: number): Date {
+  return new Date(endYear, 11, 31, 23, 59, 59, 999);
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function percentFromDate(value: string | Date, options?: { endOfDay?: boolean }): number {
+function percentFromDate(
+  value: string | Date,
+  timelineStart: Date,
+  timelineEnd: Date,
+  options?: { endOfDay?: boolean },
+): number {
   const dt =
     typeof value === "string"
       ? new Date(`${value}T${options?.endOfDay ? "23:59:59.999" : "00:00:00.000"}`)
       : value;
-  const start = TIMELINE_START.getTime();
-  const end = TIMELINE_END.getTime();
+  const start = timelineStart.getTime();
+  const end = timelineEnd.getTime();
   const current = dt.getTime();
   if (Number.isNaN(current) || end <= start) return 0;
   return clamp((current - start) / (end - start), 0, 1);
@@ -90,6 +107,58 @@ function normalizeColor(color: string): string {
   return /^#[0-9A-Fa-f]{6}$/.test(trimmed) ? trimmed.toUpperCase() : DEFAULT_MILESTONE_COLOR;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function estimateLabelSpanPercent(title: string): number {
+  return clamp(title.length * 0.9, 12, 26);
+}
+
+function buildTimelineLayout(
+  items: DashboardMilestoneItem[],
+  timelineStart: Date,
+  timelineEnd: Date,
+  footprintKind: "screen" | "print",
+): TimelineLayoutItem[] {
+  const laneEnds: number[] = [];
+  const positioned = items.map((item) => {
+    const startPercent = percentFromDate(item.start_date, timelineStart, timelineEnd);
+    const endPercent = percentFromDate(item.end_date || item.start_date, timelineStart, timelineEnd, { endOfDay: true });
+    const left = Math.min(startPercent, endPercent) * 100;
+    const width = Math.max(0.75, Math.abs(endPercent - startPercent) * 100);
+    const footprintWidth =
+      footprintKind === "print" ? Math.max(width, estimateLabelSpanPercent(item.title)) : Math.max(width, 5.5);
+    const requiredEnd = Math.min(100, left + footprintWidth);
+
+    let lane = laneEnds.findIndex((laneEnd) => left >= laneEnd + 1.2);
+    if (lane < 0) {
+      lane = laneEnds.length;
+      laneEnds.push(requiredEnd);
+    } else {
+      laneEnds[lane] = requiredEnd;
+    }
+
+    return {
+      item,
+      startPercent,
+      endPercent,
+      left,
+      width,
+      lane,
+      laneCount: 0,
+    };
+  });
+
+  const laneCount = Math.max(1, laneEnds.length);
+  return positioned.map((entry) => ({ ...entry, laneCount }));
+}
+
 function easedPercent(basePercent: number, hoverPercent: number | null): number {
   if (hoverPercent == null) return basePercent;
   const distance = basePercent - hoverPercent;
@@ -108,6 +177,7 @@ function buildEmptyForm(): DashboardMilestonePayload {
 }
 
 export function DashboardMilestoneTimeline() {
+  const [selectedRangeKey, setSelectedRangeKey] = useState<(typeof TIMELINE_RANGES)[number]["key"]>(DEFAULT_RANGE_KEY);
   const [items, setItems] = useState<DashboardMilestoneItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -120,12 +190,19 @@ export function DashboardMilestoneTimeline() {
   const [notice, setNotice] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const selectedRange = useMemo(
+    () => TIMELINE_RANGES.find((range) => range.key === selectedRangeKey) || TIMELINE_RANGES[1],
+    [selectedRangeKey],
+  );
+  const timelineStart = useMemo(() => timelineStartDate(selectedRange.startYear), [selectedRange.startYear]);
+  const timelineEnd = useMemo(() => timelineEndDate(selectedRange.endYear), [selectedRange.endYear]);
+
   const loadMilestones = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const res = await apiGet<DashboardMilestoneListResponse>(
-        `/dashboard/milestones?start_year=${TIMELINE_START_YEAR}&end_year=${TIMELINE_END_YEAR}`,
+        `/dashboard/milestones?start_year=${selectedRange.startYear}&end_year=${selectedRange.endYear}`,
       );
       setItems(res.items || []);
     } catch (err) {
@@ -133,7 +210,7 @@ export function DashboardMilestoneTimeline() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedRange.endYear, selectedRange.startYear]);
 
   useEffect(() => {
     void loadMilestones();
@@ -149,23 +226,27 @@ export function DashboardMilestoneTimeline() {
     [items],
   );
 
-  const currentPercent = useMemo(() => percentFromDate(new Date()), []);
+  const currentPercent = useMemo(() => percentFromDate(new Date(), timelineStart, timelineEnd), [timelineEnd, timelineStart]);
+  const showCurrentMarker = useMemo(() => {
+    const now = new Date().getTime();
+    return now >= timelineStart.getTime() && now <= timelineEnd.getTime();
+  }, [timelineEnd, timelineStart]);
   const yearTicks = useMemo(
     () =>
-      Array.from({ length: TIMELINE_END_YEAR - TIMELINE_START_YEAR + 1 }, (_, index) => {
-        const year = TIMELINE_START_YEAR + index;
+      Array.from({ length: selectedRange.endYear - selectedRange.startYear + 1 }, (_, index) => {
+        const year = selectedRange.startYear + index;
         return {
           year,
-          percent: percentFromDate(new Date(year, 0, 1, 0, 0, 0, 0)),
+          percent: percentFromDate(new Date(year, 0, 1, 0, 0, 0, 0), timelineStart, timelineEnd),
         };
       }),
-    [],
+    [selectedRange.endYear, selectedRange.startYear, timelineEnd, timelineStart],
   );
 
   const hoveredItems = useMemo(() => {
     if (hoverPercent == null) return [];
     const hoveredTime =
-      TIMELINE_START.getTime() + (TIMELINE_END.getTime() - TIMELINE_START.getTime()) * hoverPercent;
+      timelineStart.getTime() + (timelineEnd.getTime() - timelineStart.getTime()) * hoverPercent;
     return [...sortedItems]
       .map((item) => {
         const startTime = new Date(`${item.start_date}T00:00:00`).getTime();
@@ -177,7 +258,11 @@ export function DashboardMilestoneTimeline() {
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 4)
       .filter((entry) => entry.distance <= 120 * DAY_MS);
-  }, [hoverPercent, sortedItems]);
+  }, [hoverPercent, sortedItems, timelineEnd, timelineStart]);
+  const printLayout = useMemo(
+    () => buildTimelineLayout(sortedItems, timelineStart, timelineEnd, "print"),
+    [sortedItems, timelineEnd, timelineStart],
+  );
 
   const resetForm = useCallback(() => {
     setEditingId(null);
@@ -265,6 +350,269 @@ export function DashboardMilestoneTimeline() {
     [editingId, loadMilestones, resetForm],
   );
 
+  const printMilestones = useCallback(() => {
+    const popup = window.open("", "_blank", "width=1200,height=900");
+    if (!popup || popup.closed) {
+      window.alert("인쇄 창을 열지 못했습니다. 팝업 차단을 해제한 뒤 다시 시도해주세요.");
+      return;
+    }
+    popup.opener = null;
+
+    const today = new Date();
+    const printedAt = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")} ${String(
+      today.getHours(),
+    ).padStart(2, "0")}:${String(today.getMinutes()).padStart(2, "0")}`;
+
+    const timelineBars = printLayout
+      .map((entry) => {
+        const top = 42 + entry.lane * 24;
+        const color = normalizeColor(entry.item.color || DEFAULT_MILESTONE_COLOR);
+        return `
+          <div class="bar" style="left:${entry.left}%;width:${entry.width}%;top:${top}px;background:${color};"></div>
+          <div class="bar-label" style="left:${entry.left}%;top:${top - 14}px;">${escapeHtml(entry.item.title)}</div>
+        `;
+      })
+      .join("");
+
+    const tickMarks = yearTicks
+      .map(
+        ({ year, percent }, index) => `
+          <div class="year-tick ${index === 0 ? "year-tick-start" : ""} ${
+            index === yearTicks.length - 1 ? "year-tick-end" : ""
+          }" style="left:${percent * 100}%;">
+            <span>${String(year).slice(2)}년</span>
+          </div>
+        `,
+      )
+      .join("");
+    const printTimelineHeight = Math.max(206, 74 + (printLayout[0]?.laneCount || 1) * 24);
+
+    const rows = sortedItems
+      .map(
+        (item, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(formatDateRange(item.start_date, item.end_date))}</td>
+            <td>${escapeHtml(item.title)}</td>
+            <td>${escapeHtml(item.description || "-")}</td>
+          </tr>
+        `,
+      )
+      .join("");
+
+    const currentMarker = showCurrentMarker
+      ? `<div class="current-marker" style="left:${currentPercent * 100}%;">
+           <span>현재</span>
+         </div>`
+      : "";
+
+    popup.document.open();
+    popup.document.write(`<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>마일스톤 인쇄 - ${escapeHtml(selectedRange.label)}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+        color: #1c1917;
+        background: #ffffff;
+      }
+      h1, h2, p { margin: 0; }
+      .page { width: 100%; }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+        border-bottom: 2px solid #d6d3d1;
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+      }
+      .range-badge {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: #ecfdf5;
+        color: #065f46;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .meta {
+        font-size: 12px;
+        color: #57534e;
+        text-align: right;
+      }
+      .timeline-wrap {
+        margin-top: 18px;
+        margin-bottom: 22px;
+        border: 1px solid #d6d3d1;
+        border-radius: 16px;
+        background: linear-gradient(90deg, #f5f5f4 0%, #fafaf9 45%, #f5f5f4 100%);
+        padding: 16px 18px 18px;
+      }
+      .timeline {
+        position: relative;
+        height: 190px;
+        overflow: hidden;
+      }
+      .axis {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 18px;
+        height: 1px;
+        background: #a8a29e;
+      }
+      .year-tick {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: #d6d3d1;
+      }
+      .year-tick span {
+        position: absolute;
+        top: 2px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 10px;
+        font-weight: 700;
+        color: #57534e;
+        white-space: nowrap;
+      }
+      .year-tick-start span {
+        left: 0;
+        transform: none;
+      }
+      .year-tick-end span {
+        left: auto;
+        right: 0;
+        transform: none;
+      }
+      .current-marker {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: rgba(225, 29, 72, 0.9);
+      }
+      .current-marker span {
+        position: absolute;
+        top: -2px;
+        left: 50%;
+        transform: translate(-50%, -100%);
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #e11d48;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .bar {
+        position: absolute;
+        height: 10px;
+        border-radius: 999px;
+        min-width: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      }
+      .bar-label {
+        position: absolute;
+        max-width: 210px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 10px;
+        color: #292524;
+      }
+      .list-title {
+        margin-bottom: 10px;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      thead th {
+        background: #f5f5f4;
+        font-size: 12px;
+      }
+      th, td {
+        border: 1px solid #d6d3d1;
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+        word-break: break-word;
+        white-space: pre-wrap;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      th:nth-child(1), td:nth-child(1) { width: 44px; text-align: center; }
+      th:nth-child(2), td:nth-child(2) { width: 150px; }
+      th:nth-child(3), td:nth-child(3) { width: 280px; }
+      @page { size: A4 landscape; margin: 12mm; }
+      @media print {
+        body { padding: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="header">
+        <div>
+          <h1>대시보드 마일스톤</h1>
+          <div class="range-badge">${escapeHtml(selectedRange.label)}</div>
+        </div>
+        <div class="meta">
+          <div>출력 시각: ${escapeHtml(printedAt)}</div>
+          <div>항목 수: ${sortedItems.length}건</div>
+        </div>
+      </div>
+
+      <section class="timeline-wrap">
+        <div class="timeline" style="height:${printTimelineHeight}px;">
+          <div class="axis"></div>
+          ${tickMarks}
+          ${currentMarker}
+          ${timelineBars}
+        </div>
+      </section>
+
+      <section>
+        <div class="list-title">마일스톤 전체 일정</div>
+        <table>
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>일정</th>
+              <th>제목</th>
+              <th>설명</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows || '<tr><td colspan="4">등록된 마일스톤이 없습니다.</td></tr>'}
+          </tbody>
+        </table>
+      </section>
+    </div>
+    <script>
+      window.addEventListener("load", function () {
+        setTimeout(function () {
+          window.print();
+        }, 250);
+      });
+    </script>
+  </body>
+</html>`);
+    popup.document.close();
+  }, [currentPercent, printLayout, selectedRange.label, showCurrentMarker, sortedItems, yearTicks]);
+
   return (
     <>
       <article className="rounded-lg border border-stone-200 bg-panel px-4 py-3 shadow-panel">
@@ -274,11 +622,35 @@ export function DashboardMilestoneTimeline() {
               <Route className="h-4 w-4 text-accent" />
               중장기 마일스톤
             </h2>
-            <span className="rounded-full border border-stone-300 bg-stone-50 px-2 py-0.5 text-[10px] font-semibold text-stone-600">
-              {TIMELINE_START_YEAR.toString().slice(2)}년~{TIMELINE_END_YEAR.toString().slice(2)}년
-            </span>
+            <div className="inline-flex items-center gap-1">
+              {TIMELINE_RANGES.map((range) => {
+                const active = range.key === selectedRange.key;
+                return (
+                  <button
+                    key={range.key}
+                    type="button"
+                    onClick={() => setSelectedRangeKey(range.key)}
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold transition ${
+                      active
+                        ? "border-accent bg-accent text-white"
+                        : "border-stone-300 bg-stone-50 text-stone-600 hover:bg-stone-100"
+                    }`}
+                  >
+                    {range.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={printMilestones}
+              className="inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              PDF 인쇄
+            </button>
             <button
               type="button"
               onClick={() => setDetailOpen(true)}
@@ -317,11 +689,13 @@ export function DashboardMilestoneTimeline() {
             ))}
             <div className="pointer-events-none absolute right-0 top-1 h-6 w-px bg-stone-200" />
 
-            <div className="pointer-events-none absolute inset-y-1 z-[1] w-px bg-rose-500/80" style={{ left: `${currentPercent * 100}%` }}>
-              <span className="absolute -top-6 left-1/2 -translate-x-1/2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm">
-                현재
-              </span>
-            </div>
+            {showCurrentMarker ? (
+              <div className="pointer-events-none absolute inset-y-1 z-[1] w-px bg-rose-500/80" style={{ left: `${currentPercent * 100}%` }}>
+                <span className="absolute -top-6 left-1/2 -translate-x-1/2 rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm">
+                  현재
+                </span>
+              </div>
+            ) : null}
 
             {loading ? <p className="pt-2 text-xs text-stone-500">마일스톤 로딩 중...</p> : null}
             {!loading && error ? <p className="pt-2 text-xs text-red-700">{error}</p> : null}
@@ -330,9 +704,9 @@ export function DashboardMilestoneTimeline() {
               !error &&
               sortedItems.map((item, index) => {
                 const color = normalizeColor(item.color || DEFAULT_MILESTONE_COLOR);
-                const startPercent = easedPercent(percentFromDate(item.start_date), hoverPercent);
+                const startPercent = easedPercent(percentFromDate(item.start_date, timelineStart, timelineEnd), hoverPercent);
                 const endPercent = easedPercent(
-                  percentFromDate(item.end_date || item.start_date, { endOfDay: true }),
+                  percentFromDate(item.end_date || item.start_date, timelineStart, timelineEnd, { endOfDay: true }),
                   hoverPercent,
                 );
                 const left = Math.min(startPercent, endPercent) * 100;
