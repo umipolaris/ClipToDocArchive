@@ -134,6 +134,10 @@ def _get_active_rules(db: Session) -> dict:
     return rv.rules_json if rv else {"default_category": "기타", "category_rules": []}
 
 
+def _build_manual_post_category_options(rule_categories: list[str], db_categories: list[str]) -> list[str]:
+    return _normalize_category_names([*rule_categories, *db_categories])
+
+
 def _storage_key(checksum: str, extension: str | None) -> str:
     ext = (extension or "bin").lower().lstrip(".")
     return f"{checksum[0:2]}/{checksum[2:4]}/{checksum}.{ext}"
@@ -143,9 +147,20 @@ def _file_download_path(file_id: UUID) -> str:
     return f"/files/{file_id}/download"
 
 
+def _document_file_download_path(document_id: UUID, file_id: UUID) -> str:
+    return f"/documents/{document_id}/files/{file_id}/download"
+
+
 def _download_name(filename: str) -> str:
     normalized = Path(filename).name.strip()
     return normalized or "download.bin"
+
+
+def _normalize_document_file_display_name(display_filename: str | None, fallback_filename: str) -> str:
+    preferred = _download_name(display_filename or "")
+    if preferred != "download.bin" or (display_filename or "").strip():
+        return preferred
+    return _download_name(fallback_filename)
 
 
 def _content_disposition(filename: str) -> str:
@@ -279,28 +294,29 @@ def _sync_document_categories(
 
 
 def _get_document_files(db: Session, document_id: UUID) -> list[DocumentFileItem]:
+    display_filename_expr = func.coalesce(DocumentFile.display_filename, StoredFile.original_filename)
     stmt = (
-        select(StoredFile)
+        select(DocumentFile, StoredFile, display_filename_expr.label("display_filename"))
         .join(DocumentFile, DocumentFile.file_id == StoredFile.id)
         .where(DocumentFile.document_id == document_id)
         .order_by(
-            func.lower(StoredFile.original_filename).asc(),
-            StoredFile.original_filename.asc(),
+            func.lower(display_filename_expr).asc(),
+            display_filename_expr.asc(),
             StoredFile.id.asc(),
         )
     )
-    rows = db.execute(stmt).scalars().all()
+    rows = db.execute(stmt).all()
     return [
         DocumentFileItem(
-            id=row.id,
-            original_filename=row.original_filename,
-            mime_type=row.mime_type,
-            size_bytes=row.size_bytes,
-            checksum_sha256=row.checksum_sha256,
-            storage_backend=row.storage_backend,
-            download_path=_file_download_path(row.id),
+            id=file_row.id,
+            original_filename=_normalize_document_file_display_name(link.display_filename, display_name),
+            mime_type=file_row.mime_type,
+            size_bytes=file_row.size_bytes,
+            checksum_sha256=file_row.checksum_sha256,
+            storage_backend=file_row.storage_backend,
+            download_path=_document_file_download_path(document_id, file_row.id),
         )
-        for row in rows
+        for link, file_row, display_name in rows
     ]
 
 
@@ -313,21 +329,22 @@ def _get_document_file_previews(
     if not document_ids:
         return {}, {}
 
+    display_filename_expr = func.coalesce(DocumentFile.display_filename, StoredFile.original_filename)
     rows = db.execute(
-        select(DocumentFile.document_id, StoredFile.id, StoredFile.original_filename)
+        select(DocumentFile.document_id, StoredFile.id, display_filename_expr.label("display_filename"))
         .join(StoredFile, StoredFile.id == DocumentFile.file_id)
         .where(DocumentFile.document_id.in_(document_ids))
         .order_by(
             DocumentFile.document_id.asc(),
-            func.lower(StoredFile.original_filename).asc(),
-            StoredFile.original_filename.asc(),
+            func.lower(display_filename_expr).asc(),
+            display_filename_expr.asc(),
             StoredFile.id.asc(),
         )
     ).all()
 
     counts: dict[UUID, int] = {}
     previews: dict[UUID, list[DocumentListFileItem]] = {}
-    for document_id, file_id, original_filename in rows:
+    for document_id, file_id, display_name in rows:
         counts[document_id] = counts.get(document_id, 0) + 1
         items = previews.setdefault(document_id, [])
         if len(items) >= per_document_limit:
@@ -335,8 +352,8 @@ def _get_document_file_previews(
         items.append(
             DocumentListFileItem(
                 id=file_id,
-                original_filename=original_filename,
-                download_path=_file_download_path(file_id),
+                original_filename=_normalize_document_file_display_name(display_name, ""),
+                download_path=_document_file_download_path(document_id, file_id),
             )
         )
 
@@ -735,6 +752,97 @@ def _cleanup_orphan_file(db: Session, file_row: StoredFile | None) -> bool:
     return True
 
 
+def _get_document_file_link(db: Session, document_id: UUID, file_id: UUID) -> DocumentFile | None:
+    return db.execute(
+        select(DocumentFile).where(
+            and_(
+                DocumentFile.document_id == document_id,
+                DocumentFile.file_id == file_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+def _build_file_download_response(
+    *,
+    file_row: StoredFile,
+    request: Request,
+    download_name: str,
+):
+    settings = get_settings()
+    total_size = int(file_row.size_bytes or 0)
+    range_value = _parse_http_range(request.headers.get("range"), total_size)
+    headers = {
+        "Content-Disposition": _content_disposition(download_name),
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(total_size),
+    }
+    status_code = 200
+    range_start = 0
+    range_end = max(0, total_size - 1)
+    if range_value:
+        range_start, range_end = range_value
+        content_length = range_end - range_start + 1
+        headers["Content-Range"] = f"bytes {range_start}-{range_end}/{total_size}"
+        headers["Content-Length"] = str(content_length)
+        status_code = 206
+
+    if file_row.storage_backend == "minio":
+        client = get_minio_client(
+            endpoint=settings.minio_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            secure=settings.minio_secure,
+        )
+        try:
+            if range_value:
+                minio_resp = client.get_object(
+                    bucket_name=file_row.bucket,
+                    object_name=file_row.storage_key,
+                    offset=range_start,
+                    length=range_end - range_start + 1,
+                )
+            else:
+                minio_resp = client.get_object(bucket_name=file_row.bucket, object_name=file_row.storage_key)
+        except S3Error as exc:
+            if exc.code in {"NoSuchKey", "NoSuchObject", "NoSuchBucket"}:
+                raise HTTPException(status_code=404, detail="file object not found") from exc
+            raise
+
+        def stream_chunks():  # noqa: ANN202
+            try:
+                for chunk in minio_resp.stream(_DOWNLOAD_CHUNK_SIZE):
+                    if chunk:
+                        yield chunk
+            finally:
+                minio_resp.close()
+                minio_resp.release_conn()
+
+        return StreamingResponse(
+            stream_chunks(),
+            media_type=file_row.mime_type,
+            headers=headers,
+            status_code=status_code,
+        )
+
+    disk_path = Path(settings.storage_disk_root) / file_row.storage_key
+    if not disk_path.exists():
+        raise HTTPException(status_code=404, detail="file object not found")
+    if range_value:
+        return StreamingResponse(
+            _iter_disk_file_range(disk_path, range_start, range_end, _DOWNLOAD_CHUNK_SIZE),
+            media_type=file_row.mime_type,
+            headers=headers,
+            status_code=status_code,
+        )
+    return FileResponse(
+        path=str(disk_path),
+        media_type=file_row.mime_type,
+        filename=_download_name(download_name),
+        headers=headers,
+    )
+
+
 @router.get("/documents", response_model=DocumentListResponse)
 def list_documents(
     q: str | None = Query(None),
@@ -929,7 +1037,11 @@ def get_manual_post_category_options(
     _: CurrentUser = Depends(require_roles(UserRole.EDITOR, UserRole.ADMIN)),
     db: Session = Depends(get_db),
 ) -> ManualPostCategoryOptionsResponse:
-    categories = extract_categories_from_rules_json(_get_active_rules(db))
+    rule_categories = extract_categories_from_rules_json(_get_active_rules(db))
+    db_categories = list(
+        db.execute(select(Category.name).where(Category.is_active.is_(True)).order_by(Category.name.asc())).scalars().all()
+    )
+    categories = _build_manual_post_category_options(rule_categories, db_categories)
     return ManualPostCategoryOptionsResponse(categories=categories)
 
 
@@ -1425,77 +1537,37 @@ def download_file(
     file_row = db.get(StoredFile, file_id)
     if not file_row:
         raise HTTPException(status_code=404, detail="file not found")
+    return _build_file_download_response(
+        file_row=file_row,
+        request=request,
+        download_name=file_row.original_filename,
+    )
 
-    settings = get_settings()
-    total_size = int(file_row.size_bytes or 0)
-    range_value = _parse_http_range(request.headers.get("range"), total_size)
-    headers = {
-        "Content-Disposition": _content_disposition(file_row.original_filename),
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(total_size),
-    }
-    status_code = 200
-    range_start = 0
-    range_end = max(0, total_size - 1)
-    if range_value:
-        range_start, range_end = range_value
-        content_length = range_end - range_start + 1
-        headers["Content-Range"] = f"bytes {range_start}-{range_end}/{total_size}"
-        headers["Content-Length"] = str(content_length)
-        status_code = 206
 
-    if file_row.storage_backend == "minio":
-        client = get_minio_client(
-            endpoint=settings.minio_endpoint,
-            access_key=settings.minio_access_key,
-            secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure,
-        )
-        try:
-            if range_value:
-                minio_resp = client.get_object(
-                    bucket_name=file_row.bucket,
-                    object_name=file_row.storage_key,
-                    offset=range_start,
-                    length=range_end - range_start + 1,
-                )
-            else:
-                minio_resp = client.get_object(bucket_name=file_row.bucket, object_name=file_row.storage_key)
-        except S3Error as exc:
-            if exc.code in {"NoSuchKey", "NoSuchObject", "NoSuchBucket"}:
-                raise HTTPException(status_code=404, detail="file object not found") from exc
-            raise
+@router.get("/documents/{id}/files/{file_id}/download")
+def download_document_file(
+    id: UUID,
+    file_id: UUID,
+    request: Request,
+    _: CurrentUser = Depends(require_roles(UserRole.VIEWER, UserRole.REVIEWER, UserRole.EDITOR, UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    doc = db.get(Document, id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="document not found")
 
-        def stream_chunks():  # noqa: ANN202
-            try:
-                for chunk in minio_resp.stream(_DOWNLOAD_CHUNK_SIZE):
-                    if chunk:
-                        yield chunk
-            finally:
-                minio_resp.close()
-                minio_resp.release_conn()
+    link = _get_document_file_link(db, doc.id, file_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="file link not found for document")
 
-        return StreamingResponse(
-            stream_chunks(),
-            media_type=file_row.mime_type or "application/octet-stream",
-            headers=headers,
-            status_code=status_code,
-        )
+    file_row = db.get(StoredFile, file_id)
+    if not file_row:
+        raise HTTPException(status_code=404, detail="file not found")
 
-    file_path = Path(settings.storage_disk_root) / file_row.storage_key
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="file object not found")
-    if range_value:
-        return StreamingResponse(
-            _iter_disk_file_range(file_path, range_start, range_end, _DOWNLOAD_CHUNK_SIZE),
-            media_type=file_row.mime_type or "application/octet-stream",
-            headers=headers,
-            status_code=status_code,
-        )
-    return FileResponse(
-        path=str(file_path),
-        media_type=file_row.mime_type or "application/octet-stream",
-        headers=headers,
+    return _build_file_download_response(
+        file_row=file_row,
+        request=request,
+        download_name=_normalize_document_file_display_name(link.display_filename, file_row.original_filename),
     )
 
 
@@ -1811,8 +1883,10 @@ def add_document_files(
     before_file_count = len(linked_file_ids)
 
     added_file_ids: list[UUID] = []
+    renamed_file_ids: list[UUID] = []
     skipped_duplicates = 0
     for upload in files:
+        display_filename = _normalize_document_file_display_name(upload.filename, "upload.bin")
         stored = _store_uploaded_file(
             db,
             source=doc.source,
@@ -1821,13 +1895,20 @@ def add_document_files(
             created_by=current_user.id,
         )
         if stored.id in linked_file_ids:
-            skipped_duplicates += 1
+            existing_link = _get_document_file_link(db, doc.id, stored.id)
+            if existing_link and existing_link.display_filename != display_filename:
+                existing_link.display_filename = display_filename
+                db.add(existing_link)
+                renamed_file_ids.append(stored.id)
+            else:
+                skipped_duplicates += 1
             continue
 
         db.add(
             DocumentFile(
                 document_id=doc.id,
                 file_id=stored.id,
+                display_filename=display_filename,
                 is_primary=not has_primary,
                 created_by=current_user.id,
             )
@@ -1836,7 +1917,7 @@ def add_document_files(
         added_file_ids.append(stored.id)
         has_primary = True
 
-    if added_file_ids:
+    if added_file_ids or renamed_file_ids:
         tags_snapshot = _get_tag_names(db, doc.id)
         normalized_reason = change_reason.strip() or "manual_file_add"
         _append_document_version(
@@ -1858,6 +1939,7 @@ def add_document_files(
                 after_json={
                     "file_count": len(linked_file_ids),
                     "added_file_ids": [str(file_id) for file_id in added_file_ids],
+                    "renamed_file_ids": [str(file_id) for file_id in renamed_file_ids],
                     "skipped_duplicates": skipped_duplicates,
                     "change_reason": normalized_reason,
                 },
@@ -1899,8 +1981,41 @@ def replace_document_file(
         upload=file,
         created_by=current_user.id,
     )
+    new_display_filename = _normalize_document_file_display_name(file.filename, new_file.original_filename)
 
     if new_file.id == link.file_id:
+        if link.display_filename != new_display_filename:
+            link.display_filename = new_display_filename
+            db.add(link)
+            tags_snapshot = _get_tag_names(db, doc.id)
+            normalized_reason = change_reason.strip() or "manual_file_replace"
+            _append_document_version(
+                db,
+                doc,
+                change_reason=normalized_reason,
+                tags_snapshot=tags_snapshot,
+                created_by=current_user.id,
+            )
+            db.add(
+                AuditLog(
+                    actor_user_id=current_user.id,
+                    action="DOCUMENT_FILE_REPLACE",
+                    target_type="document",
+                    target_id=doc.id,
+                    before_json={
+                        "old_file_id": str(file_id),
+                        "old_file_name": old_file.original_filename if old_file else None,
+                    },
+                    after_json={
+                        "new_file_id": str(new_file.id),
+                        "new_file_name": new_display_filename,
+                        "change_reason": normalized_reason,
+                    },
+                )
+            )
+            db.commit()
+            db.refresh(doc)
+            enqueue_document_index_sync(doc.id)
         return _to_document_detail_response(db, doc)
 
     duplicate_link = db.execute(
@@ -1913,9 +2028,12 @@ def replace_document_file(
         )
     ).scalar_one_or_none()
     if duplicate_link:
+        duplicate_link.display_filename = new_display_filename
+        db.add(duplicate_link)
         db.delete(link)
     else:
         link.file_id = new_file.id
+        link.display_filename = new_display_filename
         db.add(link)
     db.flush()
     _cleanup_orphan_file(db, old_file)

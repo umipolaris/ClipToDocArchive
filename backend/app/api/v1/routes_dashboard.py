@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import CurrentUser, require_roles
 from app.db.models import (
     Category,
+    DashboardMilestone,
     DashboardTask,
     DashboardTaskKind,
     DashboardTaskSetting,
@@ -23,6 +24,10 @@ from app.db.models import (
 from app.db.session import get_db
 from app.schemas.dashboard import (
     DashboardCategoryCount,
+    DashboardMilestoneCreateRequest,
+    DashboardMilestoneItem,
+    DashboardMilestoneListResponse,
+    DashboardMilestoneUpdateRequest,
     DashboardTaskCreateRequest,
     DashboardTaskItem,
     DashboardTaskListResponse,
@@ -39,6 +44,8 @@ from app.schemas.dashboard import (
 router = APIRouter()
 
 DEFAULT_TASK_CATEGORIES = ["할일", "회의"]
+DEFAULT_MILESTONE_START_YEAR = 2025
+DEFAULT_MILESTONE_END_YEAR = 2032
 DEFAULT_CATEGORY_COLORS = {
     "할일": "#059669",
     "회의": "#0284C7",
@@ -104,6 +111,11 @@ def _normalize_task_list_range_future_months(raw: int | None) -> int:
     return max(MIN_TASK_LIST_RANGE_FUTURE_MONTHS, min(MAX_TASK_LIST_RANGE_FUTURE_MONTHS, value))
 
 
+def _normalize_milestone_year(value: int | None, *, fallback: int, minimum: int, maximum: int) -> int:
+    year = fallback if value is None else int(value)
+    return max(minimum, min(maximum, year))
+
+
 def _to_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
@@ -144,6 +156,15 @@ def _normalize_hex_color(value: str | None) -> str | None:
     if re.fullmatch(r"#[0-9a-fA-F]{6}", text):
         return text.upper()
     return None
+
+
+def _normalize_milestone_color(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = _normalize_hex_color(value)
+    if normalized is None:
+        raise HTTPException(status_code=400, detail="milestone color must be a hex value like #0F766E")
+    return normalized
 
 
 def _default_color_for_category(name: str) -> str:
@@ -219,9 +240,41 @@ def _normalize_task_ended_at(*, scheduled_at: datetime, ended_at: datetime | Non
     return normalized_end
 
 
-def _task_file_download_path(file_id: UUID | None) -> str | None:
+def _normalize_milestone_dates(*, start_date: date, end_date: date | None) -> tuple[date, date | None]:
+    if end_date is not None and end_date < start_date:
+        raise HTTPException(status_code=400, detail="end_date must be greater than or equal to start_date")
+    return start_date, end_date
+
+
+def _normalize_milestone_title(raw: str) -> str:
+    title = raw.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    return title
+
+
+def _normalize_milestone_description(raw: str | None) -> str:
+    return (raw or "").strip()
+
+
+def _to_dashboard_milestone_item(row: DashboardMilestone) -> DashboardMilestoneItem:
+    return DashboardMilestoneItem(
+        id=row.id,
+        title=row.title,
+        start_date=row.start_date,
+        end_date=row.end_date,
+        description=row.description or "",
+        color=row.color,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _task_file_download_path(document_id: UUID | None, file_id: UUID | None) -> str | None:
     if file_id is None:
         return None
+    if document_id is not None:
+        return f"/documents/{document_id}/files/{file_id}/download"
     return f"/files/{file_id}/download"
 
 
@@ -247,13 +300,19 @@ def _normalize_task_linked_file(
 
 
 def _task_with_link_meta_stmt():  # noqa: ANN202
+    linked_filename = func.coalesce(DocumentFile.display_filename, File.original_filename).label("linked_file_name")
     return (
         select(
             DashboardTask,
             Document.title.label("linked_document_title"),
-            File.original_filename.label("linked_file_name"),
+            linked_filename,
         )
         .outerjoin(Document, Document.id == DashboardTask.linked_document_id)
+        .outerjoin(
+            DocumentFile,
+            (DocumentFile.document_id == DashboardTask.linked_document_id)
+            & (DocumentFile.file_id == DashboardTask.linked_file_id),
+        )
         .outerjoin(File, File.id == DashboardTask.linked_file_id)
     )
 
@@ -277,7 +336,7 @@ def _to_dashboard_task_item(
         linked_document_title=linked_document_title,
         linked_file_id=task.linked_file_id,
         linked_file_name=linked_file_name,
-        linked_file_download_path=_task_file_download_path(task.linked_file_id),
+        linked_file_download_path=_task_file_download_path(task.linked_document_id, task.linked_file_id),
     )
 
 
@@ -396,7 +455,10 @@ def get_dashboard_summary(
         .select_from(DocumentFile)
         .join(File, File.id == DocumentFile.file_id)
         .where(DocumentFile.document_id == Document.id)
-        .order_by(DocumentFile.created_at.asc(), File.original_filename.asc())
+        .order_by(
+            DocumentFile.created_at.asc(),
+            func.coalesce(DocumentFile.display_filename, File.original_filename).asc(),
+        )
         .limit(1)
         .scalar_subquery()
     )
@@ -406,7 +468,10 @@ def get_dashboard_summary(
         .select_from(DocumentFile)
         .join(File, File.id == DocumentFile.file_id)
         .where(DocumentFile.document_id == Document.id)
-        .order_by(DocumentFile.created_at.asc(), File.original_filename.asc())
+        .order_by(
+            DocumentFile.created_at.asc(),
+            func.coalesce(DocumentFile.display_filename, File.original_filename).asc(),
+        )
         .limit(1)
         .scalar_subquery()
     )
@@ -454,6 +519,105 @@ def get_dashboard_summary(
         recent_documents=recent_documents,
         generated_at=now,
     )
+
+
+@router.get("/dashboard/milestones", response_model=DashboardMilestoneListResponse)
+def get_dashboard_milestones(
+    start_year: int = Query(DEFAULT_MILESTONE_START_YEAR, ge=2000, le=2100),
+    end_year: int = Query(DEFAULT_MILESTONE_END_YEAR, ge=2000, le=2100),
+    _: CurrentUser = Depends(require_roles(UserRole.VIEWER, UserRole.REVIEWER, UserRole.EDITOR, UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+) -> DashboardMilestoneListResponse:
+    normalized_start_year = _normalize_milestone_year(
+        start_year,
+        fallback=DEFAULT_MILESTONE_START_YEAR,
+        minimum=2000,
+        maximum=2100,
+    )
+    normalized_end_year = _normalize_milestone_year(
+        end_year,
+        fallback=DEFAULT_MILESTONE_END_YEAR,
+        minimum=normalized_start_year,
+        maximum=2100,
+    )
+    if normalized_end_year < normalized_start_year:
+        raise HTTPException(status_code=400, detail="end_year must be greater than or equal to start_year")
+
+    start_day = date(normalized_start_year, 1, 1)
+    end_day = date(normalized_end_year, 12, 31)
+    rows = db.execute(
+        select(DashboardMilestone)
+        .where(
+            DashboardMilestone.start_date <= end_day,
+            func.coalesce(DashboardMilestone.end_date, DashboardMilestone.start_date) >= start_day,
+        )
+        .order_by(DashboardMilestone.start_date.asc(), DashboardMilestone.title.asc(), DashboardMilestone.id.asc())
+    ).scalars().all()
+
+    return DashboardMilestoneListResponse(
+        start_year=normalized_start_year,
+        end_year=normalized_end_year,
+        items=[_to_dashboard_milestone_item(row) for row in rows],
+        generated_at=_now(),
+    )
+
+
+@router.post("/dashboard/milestones", response_model=DashboardMilestoneItem)
+def create_dashboard_milestone(
+    req: DashboardMilestoneCreateRequest,
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN, UserRole.EDITOR)),
+    db: Session = Depends(get_db),
+) -> DashboardMilestoneItem:
+    start_date, end_date = _normalize_milestone_dates(start_date=req.start_date, end_date=req.end_date)
+    row = DashboardMilestone(
+        title=_normalize_milestone_title(req.title),
+        start_date=start_date,
+        end_date=end_date,
+        description=_normalize_milestone_description(req.description),
+        color=_normalize_milestone_color(req.color),
+        created_by=current_user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _to_dashboard_milestone_item(row)
+
+
+@router.patch("/dashboard/milestones/{milestone_id}", response_model=DashboardMilestoneItem)
+def update_dashboard_milestone(
+    milestone_id: UUID,
+    req: DashboardMilestoneUpdateRequest,
+    current_user: CurrentUser = Depends(require_roles(UserRole.ADMIN, UserRole.EDITOR)),
+    db: Session = Depends(get_db),
+) -> DashboardMilestoneItem:
+    row = db.get(DashboardMilestone, milestone_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="milestone not found")
+    start_date, end_date = _normalize_milestone_dates(start_date=req.start_date, end_date=req.end_date)
+    row.title = _normalize_milestone_title(req.title)
+    row.start_date = start_date
+    row.end_date = end_date
+    row.description = _normalize_milestone_description(req.description)
+    row.color = _normalize_milestone_color(req.color)
+    row.created_by = current_user.id
+    row.updated_at = _now()
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _to_dashboard_milestone_item(row)
+
+
+@router.delete("/dashboard/milestones/{milestone_id}", status_code=204)
+def delete_dashboard_milestone(
+    milestone_id: UUID,
+    _: CurrentUser = Depends(require_roles(UserRole.ADMIN, UserRole.EDITOR)),
+    db: Session = Depends(get_db),
+) -> None:
+    row = db.get(DashboardMilestone, milestone_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="milestone not found")
+    db.delete(row)
+    db.commit()
 
 
 @router.get("/dashboard/tasks", response_model=DashboardTaskListResponse)

@@ -106,7 +106,7 @@ def _get_primary_filename_map(db: Session, document_ids: list[UUID]) -> dict[UUI
     if not document_ids:
         return {}
     rows = db.execute(
-        select(DocumentFile.document_id, File.original_filename)
+        select(DocumentFile.document_id, func.coalesce(DocumentFile.display_filename, File.original_filename))
         .join(File, File.id == DocumentFile.file_id)
         .where(DocumentFile.document_id.in_(document_ids))
         .order_by(DocumentFile.document_id.asc(), DocumentFile.is_primary.desc(), DocumentFile.created_at.desc())

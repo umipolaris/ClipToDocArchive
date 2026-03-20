@@ -36,6 +36,7 @@ import {
 import { apiFetch, apiGet, apiPatch, apiPost, buildApiUrl } from "@/lib/api-client";
 import { reviewStatusLabel } from "@/lib/labels";
 import { ModalShell } from "@/components/common/ModalShell";
+import { DashboardMilestoneTimeline } from "@/components/dashboard/DashboardMilestoneTimeline";
 
 type DashboardCategoryCount = {
   category: string;
@@ -873,8 +874,8 @@ export function DashboardSummary() {
   );
 
   const openTaskModal = useCallback(
-    (dateKey: string) => {
-      resetTaskFormForDate(dateKey);
+    (dateKey?: string) => {
+      resetTaskFormForDate(dateKey || dateKeyFromDate(new Date()));
       setTaskModalOpen(true);
     },
     [resetTaskFormForDate],
@@ -1539,6 +1540,8 @@ export function DashboardSummary() {
         </div>
       ) : null}
 
+      <DashboardMilestoneTimeline />
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <article className="rounded-lg border border-stone-200 bg-panel p-4 shadow-panel">
           <h2 className="inline-flex items-center gap-1 text-sm font-semibold text-stone-700">
@@ -1581,7 +1584,7 @@ export function DashboardSummary() {
             <div className="inline-flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => openTaskModal(selectedDate || dateKeyFromDate(new Date()))}
+                onClick={() => openTaskModal()}
                 className="inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50"
               >
                 <CalendarPlus className="h-3.5 w-3.5" />

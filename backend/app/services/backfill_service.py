@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, and_, select
+from sqlalchemy import Select, and_, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AuditLog, Document, DocumentFile, DocumentTag, DocumentVersion, File, ReviewStatus, RuleVersion, Tag
@@ -30,7 +30,7 @@ def _get_tag_names(db: Session, document_id: UUID) -> list[str]:
 
 def _get_primary_filename(db: Session, document_id: UUID) -> str:
     stmt = (
-        select(File.original_filename)
+        select(func.coalesce(DocumentFile.display_filename, File.original_filename))
         .join(DocumentFile, DocumentFile.file_id == File.id)
         .where(DocumentFile.document_id == document_id)
         .order_by(DocumentFile.is_primary.desc())

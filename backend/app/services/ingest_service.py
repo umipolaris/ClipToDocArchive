@@ -275,7 +275,15 @@ def _create_document(
     db.commit()
     db.refresh(doc)
 
-    db.add(DocumentFile(document_id=doc.id, file_id=file_row.id, is_primary=True))
+    display_filename = str(job.payload_json.get("filename") or file_row.original_filename or "").strip() or file_row.original_filename
+    db.add(
+        DocumentFile(
+            document_id=doc.id,
+            file_id=file_row.id,
+            display_filename=display_filename,
+            is_primary=True,
+        )
+    )
     if doc.category_id:
         db.add(DocumentCategory(document_id=doc.id, category_id=doc.category_id))
 

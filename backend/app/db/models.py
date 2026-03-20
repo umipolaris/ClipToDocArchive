@@ -137,6 +137,20 @@ class DashboardTaskSetting(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
+class DashboardMilestone(Base):
+    __tablename__ = "dashboard_milestones"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(180), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    color: Mapped[str | None] = mapped_column(String(7))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
 class BrandingSetting(Base):
     __tablename__ = "branding_settings"
 
@@ -297,6 +311,7 @@ class DocumentFile(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("files.id", ondelete="RESTRICT"), nullable=False)
+    display_filename: Mapped[str | None] = mapped_column(Text)
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -415,6 +430,7 @@ class SavedFilter(Base):
 Index("idx_documents_event_date_desc", Document.event_date.desc())
 Index("idx_documents_category_event_date", Document.category_id, Document.event_date.desc())
 Index("idx_documents_search_vector_gin", Document.search_vector, postgresql_using="gin")
+Index("idx_dashboard_milestones_start_date", DashboardMilestone.start_date.asc())
 Index("idx_document_categories_category_document", DocumentCategory.category_id, DocumentCategory.document_id)
 Index("idx_document_comments_document_created", DocumentComment.document_id, DocumentComment.created_at.desc())
 Index(

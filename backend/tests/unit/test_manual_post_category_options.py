@@ -1,3 +1,4 @@
+from app.api.v1.routes_documents import _build_manual_post_category_options
 from app.services.rule_categories import extract_categories_from_rules_json
 
 
@@ -36,3 +37,12 @@ def test_extract_categories_from_rules_json_ignores_malformed_values():
     out = extract_categories_from_rules_json(rules)
 
     assert out == ["문서통제", "기타"]
+
+
+def test_build_manual_post_category_options_merges_rule_and_db_categories_without_duplicates():
+    out = _build_manual_post_category_options(
+        ["회의", "문서통제", "기타"],
+        ["새카테고리", "회의", "현장기록"],
+    )
+
+    assert out == ["회의", "문서통제", "기타", "새카테고리", "현장기록"]

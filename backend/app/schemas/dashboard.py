@@ -56,6 +56,40 @@ class DashboardSummaryResponse(BaseModel):
     generated_at: datetime
 
 
+class DashboardMilestoneItem(BaseModel):
+    id: UUID
+    title: str
+    start_date: date
+    end_date: date | None = None
+    description: str = ""
+    color: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DashboardMilestoneListResponse(BaseModel):
+    start_year: int
+    end_year: int
+    items: list[DashboardMilestoneItem] = Field(default_factory=list)
+    generated_at: datetime
+
+
+class DashboardMilestoneCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    start_date: date
+    end_date: date | None = None
+    description: str = Field(default="", max_length=2000)
+    color: str | None = Field(default=None, min_length=7, max_length=7)
+
+
+class DashboardMilestoneUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    start_date: date
+    end_date: date | None = None
+    description: str = Field(default="", max_length=2000)
+    color: str | None = Field(default=None, min_length=7, max_length=7)
+
+
 class DashboardTaskItem(BaseModel):
     id: UUID
     category: str

@@ -59,7 +59,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (!res.ok) {
     throw new Error(await parseErrorMessage(res));
   }
-  return (await res.json()) as T;
+  if (res.status === 204) {
+    return {} as T;
+  }
+  const raw = await res.text();
+  if (!raw) {
+    return {} as T;
+  }
+  return JSON.parse(raw) as T;
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

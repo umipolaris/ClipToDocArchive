@@ -699,6 +699,7 @@ def _create_document_from_legacy(
             DocumentFile(
                 document_id=doc.id,
                 file_id=file_row.id,
+                display_filename=record.original_filename,
                 is_primary=True,
                 created_at=record.created_at,
                 updated_at=record.created_at,

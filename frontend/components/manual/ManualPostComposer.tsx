@@ -32,8 +32,7 @@ type SplitCreateResult = {
   failed_files: { name: string; reason: string }[];
 };
 
-const DEFAULT_TAG_TEMPLATE = "set:,dockey:,rev:,kind:,lang:";
-const REQUIRED_STRUCTURED_PREFIXES = ["set:", "dockey:", "rev:", "kind:"];
+const DEFAULT_TAG_TEMPLATE = "";
 
 function parseTags(input: string): string[] {
   return input
@@ -54,24 +53,17 @@ function buildCaptionTemplate(params: {
     params.description.trim() || "설명 입력",
     `#분류:${params.categoryName.trim() || "분류명"}`,
     `#날짜:${params.eventDate || "YYYY-MM-DD"}`,
-    `#태그:${(params.tags.length > 0 ? params.tags : parseTags(DEFAULT_TAG_TEMPLATE)).join(",")}`,
+    `#태그:${params.tags.join(",")}`,
   ];
   return lines.join("\n");
-}
-
-function hasRequiredStructuredTags(tags: string[]): boolean {
-  const lowered = tags.map((tag) => tag.toLowerCase());
-  return REQUIRED_STRUCTURED_PREFIXES.every((prefix) => lowered.some((tag) => tag.startsWith(prefix)));
 }
 
 function validateCaptionTemplate(caption: string): string | null {
   const normalized = caption.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
   if (!/\n?#분류\s*:\s*.+/i.test(normalized)) return "#분류 라인이 필요합니다.";
   if (!/\n?#날짜\s*:\s*.+/i.test(normalized)) return "#날짜 라인이 필요합니다.";
-  const tagMatch = normalized.match(/\n?#태그\s*:\s*(.+)/i);
+  const tagMatch = normalized.match(/\n?#태그\s*:\s*(.*)/i);
   if (!tagMatch) return "#태그 라인이 필요합니다.";
-  const tags = parseTags(tagMatch[1] || "");
-  if (!hasRequiredStructuredTags(tags)) return "#태그에 set:/dockey:/rev:/kind: 키가 필요합니다.";
   return null;
 }
 
@@ -160,10 +152,6 @@ export function ManualPostComposer() {
       }
       if (!eventDate) {
         setError("템플릿 모드에서는 #날짜를 위해 event_date를 입력해야 합니다.");
-        return;
-      }
-      if (!hasRequiredStructuredTags(parsedTags)) {
-        setError("템플릿 모드에서는 태그에 set:/dockey:/rev:/kind: 키가 필요합니다.");
         return;
       }
     }
@@ -425,7 +413,7 @@ export function ManualPostComposer() {
             ) : (
               <textarea
                 className="min-h-24 w-full rounded border border-stone-300 px-3 py-2 text-xs"
-                placeholder={"직접 입력 시에도 #분류/#날짜/#태그 라인 필요\n#태그는 set:/dockey:/rev:/kind: 포함 필요"}
+                placeholder={"직접 입력 시에도 #분류/#날짜/#태그 라인 필요"}
                 value={captionRaw}
                 onChange={(e) => setCaptionRaw(e.target.value)}
               />
@@ -507,11 +495,11 @@ export function ManualPostComposer() {
           <span className="text-xs font-semibold text-stone-600">태그(쉼표/줄바꿈 구분)</span>
           <textarea
             className="min-h-20 rounded border border-stone-300 px-3 py-2"
-            placeholder={DEFAULT_TAG_TEMPLATE}
+            placeholder="예: 프로젝트A,회의록,중요"
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}
           />
-          <p className="text-xs text-stone-500">필수 키: set:, dockey:, rev:, kind: (lang: 권장)</p>
+          <p className="text-xs text-stone-500">원하는 태그만 입력하면 됩니다. 쉼표 또는 줄바꿈으로 구분합니다.</p>
         </label>
 
         <div className="grid gap-2 text-sm md:col-span-2">
