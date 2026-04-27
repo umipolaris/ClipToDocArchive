@@ -1,9 +1,29 @@
-from dataclasses import dataclass
-from datetime import date, datetime
-import re
+"""Document classification rule engine.
 
-from app.services.caption_parser import CaptionParseResult
+Scoring model (replaces the old "first-keyword-match wins" logic):
+
+  - Each (rule, source) pair contributes a score = weight(source) × match_strength.
+  - Sources are weighted: title > caption > description > filename > body > extension/mime.
+  - Match strength: full-token = 1.0, substring = 0.6, normalised-substring = 0.5.
+  - The category with the highest cumulative score wins, ties broken by
+    the rule's declared `priority` (default 0) and then by ruleset order.
+  - Threshold: a category needs ≥ MIN_SCORE to be confident; otherwise we
+    fall back to tag-based / extension-based / default (= "기타") and only
+    raise CLASSIFY_FAIL when nothing at all matched.
+
+Default extension/MIME mapping is a minimal built-in list that fires only
+when no rule matched — to give image / video / drawing files a sensible
+home instead of "기타".
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from datetime import date, datetime
+
 from app.services.archive_set_parser import infer_structured_tags
+from app.services.caption_parser import CaptionParseResult
 from app.services.date_parser import parse_event_date_from_text
 from app.services.rule_categories import extract_categories_from_rules_json
 
@@ -17,6 +37,7 @@ class RuleInput:
     body_text: str
     metadata_date_text: str | None
     ingested_at: datetime
+    mime_type: str | None = None
 
 
 @dataclass
@@ -27,35 +48,18 @@ class RuleOutput:
     review_reasons: list[str]
 
 
-_STOPWORDS = {
-    "the",
-    "and",
-    "for",
-    "with",
-    "from",
-    "this",
-    "that",
-    "document",
-    "file",
-    "title",
-    "description",
-    "manual",
-    "note",
-    "분류",
-    "날짜",
-    "태그",
-    "문서",
-    "파일",
-    "제목",
-    "설명",
-    "작성",
-    "수정",
-    "및",
-    "또는",
-    "그리고",
-}
-_TOKEN_PATTERN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
 _AUTO_TAG_LIMIT = 3
+_MIN_SCORE = 1.0  # any keyword anywhere ≥ substring is enough to commit
+_SOURCE_WEIGHTS = {
+    "title": 3.0,
+    "caption": 2.5,
+    "description": 1.5,
+    "filename": 2.0,
+    "body": 1.0,
+}
+_STRENGTH_TOKEN = 1.0
+_STRENGTH_SUBSTRING = 0.6
+
 _KIND_CATEGORY_MAP = {
     "manual": "매뉴얼",
     "guide": "가이드",
@@ -69,14 +73,91 @@ _SET_CATEGORY_MAP = {
 }
 _GENERIC_CATEGORY_KEYS = {"기타", "default", "misc", "unknown", "uncategorized", "미분류"}
 
+_EXTENSION_FALLBACK_CATEGORY = {
+    "pdf": "문서",
+    "doc": "문서",
+    "docx": "문서",
+    "hwp": "문서",
+    "hwpx": "문서",
+    "rtf": "문서",
+    "txt": "문서",
+    "md": "문서",
+    "xls": "스프레드시트",
+    "xlsx": "스프레드시트",
+    "csv": "스프레드시트",
+    "ppt": "프레젠테이션",
+    "pptx": "프레젠테이션",
+    "key": "프레젠테이션",
+    "jpg": "사진",
+    "jpeg": "사진",
+    "png": "사진",
+    "gif": "사진",
+    "webp": "사진",
+    "bmp": "사진",
+    "tif": "사진",
+    "tiff": "사진",
+    "heic": "사진",
+    "raw": "사진",
+    "mp4": "영상",
+    "mov": "영상",
+    "avi": "영상",
+    "mkv": "영상",
+    "webm": "영상",
+    "wav": "음성",
+    "mp3": "음성",
+    "flac": "음성",
+    "m4a": "음성",
+    "dwg": "도면",
+    "dxf": "도면",
+    "dwf": "도면",
+    "stp": "도면",
+    "step": "도면",
+    "iges": "도면",
+    "igs": "도면",
+    "zip": "압축",
+    "tar": "압축",
+    "gz": "압축",
+    "7z": "압축",
+    "rar": "압축",
+    "json": "데이터",
+    "xml": "데이터",
+    "yaml": "데이터",
+    "yml": "데이터",
+}
 
-def _match_keywords(text: str, keywords: list[str]) -> bool:
-    lower = text.lower()
-    return any(kw.lower() in lower for kw in keywords)
+_MIME_FALLBACK_CATEGORY = {
+    "image/": "사진",
+    "video/": "영상",
+    "audio/": "음성",
+    "application/pdf": "문서",
+    "application/zip": "압축",
+    "application/x-7z-compressed": "압축",
+    "application/x-tar": "압축",
+}
+
+_TOKEN_PATTERN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
+_STOPWORDS = {
+    "the", "and", "for", "with", "from", "this", "that", "into", "your",
+    "document", "file", "title", "description", "manual", "note",
+    "분류", "날짜", "태그", "문서", "파일", "제목", "설명", "작성", "수정",
+    "및", "또는", "그리고", "관련", "내용",
+}
 
 
 def _normalize_tag_key(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip().lower())
+
+
+def _normalize_for_match(value: str) -> str:
+    if not value:
+        return ""
+    return re.sub(r"[\s_\-./\\]+", " ", value).lower().strip()
+
+
+def _tokenize(value: str) -> set[str]:
+    if not value:
+        return set()
+    return {t.lower() for t in _TOKEN_PATTERN.findall(value)}
 
 
 def _build_allowed_category_map(rules: dict | None) -> dict[str, str]:
@@ -92,15 +173,112 @@ def _build_allowed_category_map(rules: dict | None) -> dict[str, str]:
     return allowed
 
 
+@dataclass
+class _CategoryCandidate:
+    rule_index: int
+    category: str
+    tags: list[str] = field(default_factory=list)
+    score: float = 0.0
+    priority: int = 0
+    matched_keywords: list[str] = field(default_factory=list)
+
+
+def _score_keyword(text_norm: str, text_tokens: set[str], keyword: str) -> float:
+    if not keyword:
+        return 0.0
+    kw_norm = _normalize_for_match(keyword)
+    if not kw_norm:
+        return 0.0
+    if kw_norm in text_tokens:
+        return _STRENGTH_TOKEN
+    if " " in kw_norm or "-" in keyword or "_" in keyword:
+        if kw_norm in text_norm:
+            return _STRENGTH_SUBSTRING
+        return 0.0
+    if kw_norm in text_norm:
+        return _STRENGTH_SUBSTRING
+    return 0.0
+
+
+def _score_rule_against_sources(
+    rule: dict,
+    sources: dict[str, str],
+    *,
+    rule_index: int,
+) -> _CategoryCandidate | None:
+    rule_keywords = rule.get("keywords", {})
+    if not isinstance(rule_keywords, dict):
+        return None
+    category = str(rule.get("category") or "").strip()
+    if not category:
+        return None
+
+    cumulative = 0.0
+    matched: list[str] = []
+    cached_norm: dict[str, str] = {}
+    cached_tokens: dict[str, set[str]] = {}
+
+    for source_name, weight in _SOURCE_WEIGHTS.items():
+        text = sources.get(source_name) or ""
+        if not text:
+            continue
+        keywords = rule_keywords.get(source_name) or rule_keywords.get("any") or []
+        if not isinstance(keywords, list) or not keywords:
+            continue
+        if source_name not in cached_norm:
+            cached_norm[source_name] = _normalize_for_match(text)
+            cached_tokens[source_name] = _tokenize(text)
+        text_norm = cached_norm[source_name]
+        text_tokens = cached_tokens[source_name]
+        for kw in keywords:
+            if not isinstance(kw, str) or not kw.strip():
+                continue
+            strength = _score_keyword(text_norm, text_tokens, kw)
+            if strength <= 0:
+                continue
+            cumulative += weight * strength
+            matched.append(f"{source_name}:{kw}")
+
+    if cumulative <= 0:
+        return None
+
+    rule_tags = rule.get("tags", [])
+    tag_list = [str(t).strip() for t in rule_tags if isinstance(t, (str, int)) and str(t).strip()] if isinstance(rule_tags, list) else []
+    priority = int(rule.get("priority", 0) or 0)
+
+    return _CategoryCandidate(
+        rule_index=rule_index,
+        category=category,
+        tags=tag_list,
+        score=cumulative,
+        priority=priority,
+        matched_keywords=matched,
+    )
+
+
+def _category_from_extension_or_mime(filename: str | None, mime_type: str | None) -> str | None:
+    if filename:
+        suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if suffix and suffix in _EXTENSION_FALLBACK_CATEGORY:
+            return _EXTENSION_FALLBACK_CATEGORY[suffix]
+    if mime_type:
+        mime = mime_type.lower()
+        for prefix, cat in _MIME_FALLBACK_CATEGORY.items():
+            if mime.startswith(prefix) if prefix.endswith("/") else mime == prefix:
+                return cat
+    return None
+
+
 def _extract_keyword_tags(
     *,
     title: str,
     description: str,
     caption_raw: str,
+    body_text: str,
     existing_tags: list[str],
     max_count: int = 12,
 ) -> list[str]:
-    merged = " ".join((title or "", description or "", caption_raw or "")).strip()
+    merged = " ".join((title or "", description or "", caption_raw or "", body_text[:2000] or "")).strip()
     if not merged:
         return []
 
@@ -174,7 +352,6 @@ def _infer_category_from_tag_rules(tags: list[str], rules: dict | None) -> str |
         patterns = [str(item).strip() for item in raw_patterns if str(item).strip()] if isinstance(raw_patterns, list) else []
         if not category or not patterns:
             continue
-
         match_mode = str(rule.get("match", "any")).strip().lower()
         if match_mode == "all":
             matched = all(_tag_matches_pattern(normalized_tags, pattern) for pattern in patterns)
@@ -249,15 +426,12 @@ def apply_rules(ctx: RuleInput, rules: dict | None) -> RuleOutput:
     allowed_category_map = _build_allowed_category_map(rules)
 
     default_category_raw = rules.get("default_category", "기타")
-    if isinstance(default_category_raw, str) and default_category_raw.strip():
-        default_category = default_category_raw.strip()
-    else:
-        default_category = "기타"
+    default_category = default_category_raw.strip() if isinstance(default_category_raw, str) and default_category_raw.strip() else "기타"
 
     default_key = _normalize_tag_key(default_category)
     if default_key in allowed_category_map:
         default_category = allowed_category_map[default_key]
-    elif default_category:
+    else:
         allowed_category_map[default_key] = default_category
 
     def resolve_allowed_category(raw: str | None) -> str | None:
@@ -275,54 +449,55 @@ def apply_rules(ctx: RuleInput, rules: dict | None) -> RuleOutput:
     tags = list(explicit_tags)
     auto_tag_candidates: list[str] = []
 
+    sources = {
+        "title": ctx.title or "",
+        "caption": ctx.caption.caption_raw or "",
+        "description": ctx.description or "",
+        "filename": ctx.filename or "",
+        "body": ctx.body_text or "",
+    }
+
+    category = default_category
     category_resolved = False
+
+    # Explicit category from caption (#분류:X)
     if ctx.caption.explicit_category:
         allowed_explicit = resolve_allowed_category(ctx.caption.explicit_category.strip())
         if allowed_explicit:
             category = allowed_explicit
             category_resolved = True
         else:
-            category = default_category
             review_reasons.append("CATEGORY_OUT_OF_RULESET")
-    else:
-        category = default_category
 
-    if not category_resolved:
-        ordered_sources = [
-            ("title", ctx.title),
-            ("description", ctx.description),
-            ("filename", ctx.filename),
-            ("body", ctx.body_text),
-        ]
+    # Score every rule and pick the strongest.
+    if not category_resolved and category_rules:
+        candidates: list[_CategoryCandidate] = []
+        for idx, rule in enumerate(category_rules):
+            scored = _score_rule_against_sources(rule, sources, rule_index=idx)
+            if scored:
+                candidates.append(scored)
 
-        matched = False
-        for source_name, text in ordered_sources:
-            if not text:
-                continue
-            for rule in category_rules:
-                rule_keywords = rule.get("keywords", {})
-                keywords = rule_keywords.get(source_name, []) if isinstance(rule_keywords, dict) else []
-                if keywords and _match_keywords(text, keywords):
-                    rule_category = rule.get("category", default_category)
-                    if isinstance(rule_category, str):
-                        category = resolve_allowed_category(rule_category.strip()) or default_category
-                    else:
-                        category = default_category
-                    rule_tags = rule.get("tags", [])
-                    if isinstance(rule_tags, list):
-                        auto_tag_candidates.extend(rule_tags)
-                    matched = True
+        if candidates:
+            candidates.sort(key=lambda c: (c.score, c.priority, -c.rule_index), reverse=True)
+            best = candidates[0]
+            if best.score >= _MIN_SCORE:
+                resolved = resolve_allowed_category(best.category)
+                if resolved:
+                    category = resolved
+                    auto_tag_candidates.extend(best.tags)
                     category_resolved = True
-                    break
-            if matched:
-                break
+                else:
+                    review_reasons.append("CATEGORY_OUT_OF_RULESET")
 
+    # Date detection — try every signal we have, body included.
     date_candidates = [
         ctx.caption.explicit_date,
         ctx.caption.caption_raw,
         ctx.title,
         ctx.filename,
         ctx.metadata_date_text,
+        (ctx.body_text or "")[:4000],
+        ctx.description,
     ]
     event_date = None
     for candidate in date_candidates:
@@ -330,11 +505,11 @@ def apply_rules(ctx: RuleInput, rules: dict | None) -> RuleOutput:
         if parsed:
             event_date = parsed
             break
-
     if event_date is None:
         event_date = ctx.ingested_at.date()
         review_reasons.append("DATE_MISSING")
 
+    # Tag enrichment.
     inferred = infer_structured_tags(
         title=ctx.title,
         description=ctx.description,
@@ -342,18 +517,17 @@ def apply_rules(ctx: RuleInput, rules: dict | None) -> RuleOutput:
         existing_tags=[*tags, *auto_tag_candidates],
     )
     auto_tag_candidates.extend(inferred)
-
-    # Extract lightweight keyword tags before category inference so
-    # tag_category_rules can use them.
     auto_tag_candidates.extend(
         _extract_keyword_tags(
             title=ctx.title,
             description=ctx.description,
             caption_raw=ctx.caption.caption_raw,
+            body_text=ctx.body_text,
             existing_tags=[*tags, *auto_tag_candidates],
         )
     )
 
+    # Structured-tag based inference (kept from prior behaviour).
     if not category_resolved:
         inferred_category = _infer_category_from_tags(
             explicit_tags=explicit_tags,
@@ -367,12 +541,25 @@ def apply_rules(ctx: RuleInput, rules: dict | None) -> RuleOutput:
             if allowed_inferred:
                 category = allowed_inferred
                 category_resolved = True
-            else:
+            elif "CATEGORY_OUT_OF_RULESET" not in review_reasons:
                 review_reasons.append("CATEGORY_OUT_OF_RULESET")
-        else:
-            review_reasons.append("CLASSIFY_FAIL")
 
-    if not category_resolved and "CLASSIFY_FAIL" not in review_reasons:
+    # Extension / MIME fallback before declaring CLASSIFY_FAIL.
+    if not category_resolved:
+        ext_category = _category_from_extension_or_mime(ctx.filename, ctx.mime_type)
+        if ext_category:
+            resolved_ext = resolve_allowed_category(ext_category)
+            if resolved_ext:
+                category = resolved_ext
+                category_resolved = True
+            else:
+                # Even without a matching ruleset entry, prefer a meaningful
+                # built-in category over "기타".
+                category = ext_category
+                allowed_category_map[_normalize_tag_key(ext_category)] = ext_category
+                category_resolved = True
+
+    if not category_resolved:
         review_reasons.append("CLASSIFY_FAIL")
 
     if category and category != default_category:

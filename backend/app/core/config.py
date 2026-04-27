@@ -41,10 +41,6 @@ class Settings(BaseSettings):
     auth_lockout_seconds: int = 900
     auth_auto_login_days: int = 7
 
-    openclaw_callback_url: str = "http://openclaw:8080/callback/ingest"
-    openclaw_notify_enabled: bool = False
-    openclaw_action_secret: str = "change-me-openclaw-action-secret"
-    openclaw_action_ttl_seconds: int = 86400
     frontend_base_url: str = "http://localhost:3000"
     cors_allow_origins: list[str] = ["http://localhost:3000"]
 

@@ -23,8 +23,6 @@ import {
 import { buildApiUrl } from "@/lib/api-client";
 import { userRoleLabel } from "@/lib/labels";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
-
 type AuthUser = {
   id: string;
   username: string;
@@ -66,7 +64,7 @@ export function SidebarNav({
     let cancelled = false;
     async function loadMe() {
       try {
-        const res = await fetch(`${API_BASE}/auth/me`, { cache: "no-store", credentials: "include" });
+        const res = await fetch(buildApiUrl("/auth/me"), { cache: "no-store", credentials: "include" });
         if (!res.ok) return;
         const data = (await res.json()) as AuthUser;
         if (!cancelled) setUser(data);
@@ -91,7 +89,7 @@ export function SidebarNav({
   }, []);
 
   const logout = async () => {
-    await fetch(`${API_BASE}/auth/logout`, { method: "POST", credentials: "include" });
+    await fetch(buildApiUrl("/auth/logout"), { method: "POST", credentials: "include" });
     router.replace("/login");
     router.refresh();
   };

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "doc-archive-backend"
 version = "0.1.0"
-description = "OpenClaw + Telegram document archive backend"
+description = "Document archive backend"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.111.0",
@@ -25,7 +25,9 @@ dependencies = [
   "prometheus-client>=0.20.0",
   "passlib[bcrypt]>=1.7.4",
   "bcrypt>=4.0,<4.1",
-  "itsdangerous>=2.2.0"
+  "itsdangerous>=2.2.0",
+  "pypdf>=4.3.0",
+  "python-docx>=1.1.2"
 ]
 
 [project.optional-dependencies]

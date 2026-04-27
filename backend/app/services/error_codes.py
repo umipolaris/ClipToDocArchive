@@ -42,7 +42,4 @@ def classify_exception_for_stage(exc: Exception, stage: str) -> str:
             return IngestErrorCode.DB_WRITE_FAIL
         return IngestErrorCode.DB_WRITE_FAIL
 
-    if stage == "PUBLISHED":
-        return IngestErrorCode.NOTIFY_CALLBACK_FAIL
-
     return IngestErrorCode.PIPELINE_UNEXPECTED

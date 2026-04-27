@@ -4,6 +4,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiDelete, apiGet, apiPatch, apiPostForm, buildApiUrl } from "@/lib/api-client";
+import { copyText } from "@/lib/clipboard";
 import { getCurrentUser, type UserRole } from "@/lib/auth";
 import type { ApiDocumentHistoryResponse, ApiDocumentListResponse } from "@/lib/api-contract";
 import { FileTypeBadge } from "@/components/common/FileTypeBadge";
@@ -40,6 +41,9 @@ import {
   ArrowDown,
   Pin,
   GitBranch,
+  Link2,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import { reviewStatusLabel } from "@/lib/labels";
 import {
@@ -265,6 +269,12 @@ function yearMonthRange(year: number, month: number | null): { from: string; to:
     from: dateString(year, month, 1),
     to: dateString(year, month, lastDay),
   };
+}
+
+function documentPermalink(documentId: string): string {
+  const path = `/documents/${documentId}`;
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
 }
 
 function parseOptionalPositiveInt(value: string | null): number | null {
@@ -1953,6 +1963,47 @@ export function ArchiveWorkspace() {
                       사유 {detail.review_reasons.length}건
                     </span>
                   ) : null}
+                </div>
+                <div className="mt-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+                  <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-700">
+                    <Link2 className="h-3.5 w-3.5 text-accent" />
+                    게시물 링크
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <a
+                      href={documentPermalink(detail.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="min-w-0 flex-1 truncate text-xs text-cyan-700 underline underline-offset-2"
+                      title={documentPermalink(detail.id)}
+                    >
+                      {documentPermalink(detail.id)}
+                    </a>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-2 py-1 text-[11px] hover:bg-stone-100"
+                      onClick={async () => {
+                        try {
+                          await copyText(documentPermalink(detail.id));
+                          setDetailNotice("게시물 링크를 복사했습니다.");
+                        } catch {
+                          setDetailError("게시물 링크 복사에 실패했습니다.");
+                        }
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      링크 복사
+                    </button>
+                    <a
+                      href={documentPermalink(detail.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-2 py-1 text-[11px] hover:bg-stone-100"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      새 창
+                    </a>
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-1">

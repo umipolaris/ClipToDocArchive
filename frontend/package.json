@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
+    "dev:proxy": "node server.js",
     "build": "next build",
     "start": "next start -p 3000",
+    "start:proxy": "NODE_ENV=production node server.js",
     "lint": "next lint",
     "gen:api-schema": "PYTHONPATH=../backend python3 ../backend/scripts/export_openapi.py ./openapi/openapi.json",
     "gen:api-types": "npm run gen:api-schema && openapi-typescript ./openapi/openapi.json --output ./lib/api-types.generated.ts"

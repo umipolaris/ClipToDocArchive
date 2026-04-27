@@ -25,12 +25,16 @@ def put_file(client: Minio, bucket: str, storage_key: str, content: bytes, conte
     )
 
 
+_PART_SIZE = 32 * 1024 * 1024
+
+
 def put_file_from_path(client: Minio, bucket: str, storage_key: str, source_path: str, content_type: str) -> None:
     client.fput_object(
         bucket_name=bucket,
         object_name=storage_key,
         file_path=str(Path(source_path)),
         content_type=content_type,
+        part_size=_PART_SIZE,
     )
 
 

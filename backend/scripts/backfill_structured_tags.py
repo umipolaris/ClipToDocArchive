@@ -4,7 +4,7 @@
 사용 예시:
   python scripts/backfill_structured_tags.py --dry-run --limit 200
   python scripts/backfill_structured_tags.py --only-without-set --batch-size 500
-  python scripts/backfill_structured_tags.py --source telegram
+  python scripts/backfill_structured_tags.py --source manual
 """
 
 from __future__ import annotations

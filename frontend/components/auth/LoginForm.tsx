@@ -2,9 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiGet } from "@/lib/api-client";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
+import { apiGet, buildApiUrl } from "@/lib/api-client";
 
 type AuthUser = {
   id: string;
@@ -47,7 +45,7 @@ export function LoginForm() {
     setError("");
 
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(buildApiUrl("/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

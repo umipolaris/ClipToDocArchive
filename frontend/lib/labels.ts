@@ -20,6 +20,5 @@ export function sourceLabel(source: string): string {
   if (source === "manual") return "수동";
   if (source === "api") return "API";
   if (source === "wiki") return "위키";
-  if (source === "telegram") return "텔레그램";
   return source;
 }

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, FileText, Pencil, Pin } from "lucide-react";
+import { Copy, ExternalLink, Eye, FileText, Link2, Pencil, Pin } from "lucide-react";
 
 import { apiDelete, apiGet, apiPatch, apiPostForm, buildApiUrl } from "@/lib/api-client";
+import { copyText } from "@/lib/clipboard";
 import { PageMenuHeading } from "@/components/layout/PageMenuHeading";
 import { reviewStatusLabel } from "@/lib/labels";
 import { SafeRichContentEditor } from "@/components/editor/SafeRichContentEditor";
@@ -125,6 +126,12 @@ function hasMeaningfulRichText(value: string | null | undefined): boolean {
   return stripped.length > 0 && stripped !== "-";
 }
 
+function documentPermalink(documentId: string): string {
+  const path = `/documents/${documentId}`;
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
+}
+
 export default function DocumentDetailPage({ params }: PageProps) {
   const router = useRouter();
   const [detail, setDetail] = useState<DocumentDetailResponse | null>(null);
@@ -158,6 +165,7 @@ export default function DocumentDetailPage({ params }: PageProps) {
   const [editReviewStatus, setEditReviewStatus] = useState<ReviewStatus>("NONE");
   const [addFiles, setAddFiles] = useState<File[]>([]);
   const [addFilesInputKey, setAddFilesInputKey] = useState(0);
+  const permalink = useMemo(() => documentPermalink(params.id), [params.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -508,6 +516,47 @@ export default function DocumentDetailPage({ params }: PageProps) {
             카테고리 {(detail.categories && detail.categories.length > 0 ? detail.categories.join(", ") : detail.category || "미분류")} | 이벤트일 {detail.event_date || "-"} | 수집 {formatDateTime(detail.ingested_at)} | 상태{" "}
             {reviewStatusLabel(detail.review_status)}
           </p>
+          <div className="mt-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+            <p className="inline-flex items-center gap-1 text-xs font-semibold text-stone-700">
+              <Link2 className="h-3.5 w-3.5 text-accent" />
+              게시물 링크
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <a
+                href={permalink}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 flex-1 truncate text-sm text-cyan-700 underline underline-offset-2"
+                title={permalink}
+              >
+                {permalink}
+              </a>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-100"
+                onClick={async () => {
+                  try {
+                    await copyText(permalink);
+                    setNotice("게시물 링크를 복사했습니다.");
+                  } catch {
+                    setActionError("게시물 링크 복사에 실패했습니다.");
+                  }
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                링크 복사
+              </button>
+              <a
+                href={permalink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-100"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                새 창 열기
+              </a>
+            </div>
+          </div>
           {detail.is_pinned ? (
             <p className="mt-1 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
               <Pin className="h-3.5 w-3.5" />

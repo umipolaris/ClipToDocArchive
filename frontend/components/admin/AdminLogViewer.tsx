@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { apiFetch, apiGet, apiPost, buildApiUrl } from "@/lib/api-client";
 
-type SourceType = "telegram" | "wiki" | "manual" | "api";
+type SourceType = "wiki" | "manual" | "api";
 type IngestState =
   | "RECEIVED"
   | "STORED"
@@ -130,7 +130,7 @@ type OpsReportGenerateResponse = {
 };
 
 const PAGE_SIZE = 20;
-const SOURCE_OPTIONS: Array<SourceType | ""> = ["", "telegram", "manual", "api", "wiki"];
+const SOURCE_OPTIONS: Array<SourceType | ""> = ["", "manual", "api", "wiki"];
 const INGEST_STATES: Array<IngestState | ""> = [
   "",
   "RECEIVED",

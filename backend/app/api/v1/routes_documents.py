@@ -10,7 +10,7 @@ from typing import Literal
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File as UploadFormFile, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File as UploadFormFile, Form, HTTPException, Query, Request, UploadFile, status
 from minio.error import S3Error
 from sqlalchemy import and_, asc, desc, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -37,7 +37,7 @@ from app.db.models import (
     User,
     UserRole,
 )
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.schemas.document import (
     DocumentCommentCreateRequest,
     DocumentCommentDeleteResponse,
@@ -655,6 +655,36 @@ def _append_document_version(
     )
 
 
+def _finalize_minio_upload(*, file_id: UUID, tmp_path: str, storage_key: str, mime_type: str) -> None:
+    settings = get_settings()
+    try:
+        client = get_minio_client(
+            endpoint=settings.minio_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            secure=settings.minio_secure,
+        )
+        ensure_bucket(client, settings.storage_bucket)
+        put_file_minio_from_path(client, settings.storage_bucket, storage_key, tmp_path, mime_type)
+        with SessionLocal() as db:
+            row = db.get(StoredFile, file_id)
+            if row:
+                row.storage_state = "stored"
+                row.metadata_json = {}
+                db.commit()
+        Path(tmp_path).unlink(missing_ok=True)
+    except Exception as exc:  # noqa: BLE001
+        with SessionLocal() as db:
+            row = db.get(StoredFile, file_id)
+            if row:
+                row.storage_state = "failed"
+                row.metadata_json = {
+                    "temp_path": tmp_path,
+                    "error": str(exc)[:500],
+                }
+                db.commit()
+
+
 def _store_uploaded_file(
     db: Session,
     *,
@@ -662,6 +692,7 @@ def _store_uploaded_file(
     source_ref: str | None,
     upload: UploadFile,
     created_by: UUID,
+    background_tasks: BackgroundTasks | None = None,
 ) -> StoredFile:
     filename = upload.filename or "upload.bin"
     suffix = Path(filename).suffix
@@ -669,6 +700,7 @@ def _store_uploaded_file(
     tmp_path = Path(tmp_path_raw)
     checksum_sha256 = hashlib.sha256()
     size_bytes = 0
+    cleanup_tmp = True
     try:
         with os.fdopen(fd, "wb") as out:
             while True:
@@ -690,17 +722,25 @@ def _store_uploaded_file(
         storage_key = _storage_key(checksum, extension)
         settings = get_settings()
 
-        if settings.storage_backend == "minio":
-            client = get_minio_client(
-                endpoint=settings.minio_endpoint,
-                access_key=settings.minio_access_key,
-                secret_key=settings.minio_secret_key,
-                secure=settings.minio_secure,
-            )
-            ensure_bucket(client, settings.storage_bucket)
-            put_file_minio_from_path(client, settings.storage_bucket, storage_key, str(tmp_path), mime_type)
+        defer_minio = settings.storage_backend == "minio" and background_tasks is not None
+
+        if defer_minio:
+            storage_state = "pending"
+            metadata: dict = {"temp_path": str(tmp_path)}
         else:
-            put_file_disk_from_path(settings.storage_disk_root, storage_key, str(tmp_path))
+            storage_state = "stored"
+            metadata = {}
+            if settings.storage_backend == "minio":
+                client = get_minio_client(
+                    endpoint=settings.minio_endpoint,
+                    access_key=settings.minio_access_key,
+                    secret_key=settings.minio_secret_key,
+                    secure=settings.minio_secure,
+                )
+                ensure_bucket(client, settings.storage_bucket)
+                put_file_minio_from_path(client, settings.storage_bucket, storage_key, str(tmp_path), mime_type)
+            else:
+                put_file_disk_from_path(settings.storage_disk_root, storage_key, str(tmp_path))
 
         row = StoredFile(
             source=source,
@@ -708,24 +748,43 @@ def _store_uploaded_file(
             storage_backend=settings.storage_backend,
             bucket=settings.storage_bucket,
             storage_key=storage_key,
+            storage_state=storage_state,
             original_filename=filename,
             uploaded_filename=filename,
             extension=extension,
             checksum_sha256=checksum,
             mime_type=mime_type,
             size_bytes=size_bytes,
-            metadata_json={},
+            metadata_json=metadata,
             created_by=created_by,
         )
         db.add(row)
         db.flush()
+
+        if defer_minio:
+            cleanup_tmp = False
+            background_tasks.add_task(
+                _finalize_minio_upload,
+                file_id=row.id,
+                tmp_path=str(tmp_path),
+                storage_key=storage_key,
+                mime_type=mime_type,
+            )
+
         return row
     finally:
-        tmp_path.unlink(missing_ok=True)
+        if cleanup_tmp:
+            tmp_path.unlink(missing_ok=True)
 
 
 def _delete_stored_object(file_row: StoredFile) -> None:
     settings = get_settings()
+    temp_path_str = (file_row.metadata_json or {}).get("temp_path") if file_row.metadata_json else None
+    if temp_path_str:
+        Path(temp_path_str).unlink(missing_ok=True)
+    storage_state = getattr(file_row, "storage_state", "stored") or "stored"
+    if storage_state == "pending":
+        return
     if file_row.storage_backend == "minio":
         client = get_minio_client(
             endpoint=settings.minio_endpoint,
@@ -786,6 +845,29 @@ def _build_file_download_response(
         headers["Content-Range"] = f"bytes {range_start}-{range_end}/{total_size}"
         headers["Content-Length"] = str(content_length)
         status_code = 206
+
+    storage_state = getattr(file_row, "storage_state", "stored") or "stored"
+    if storage_state != "stored":
+        temp_path_str = (file_row.metadata_json or {}).get("temp_path") if file_row.metadata_json else None
+        temp_path = Path(temp_path_str) if temp_path_str else None
+        if not temp_path or not temp_path.exists():
+            raise HTTPException(
+                status_code=409 if storage_state == "pending" else 404,
+                detail="file upload still in progress" if storage_state == "pending" else "file upload failed",
+            )
+        if range_value:
+            return StreamingResponse(
+                _iter_disk_file_range(temp_path, range_start, range_end, _DOWNLOAD_CHUNK_SIZE),
+                media_type=file_row.mime_type,
+                headers=headers,
+                status_code=status_code,
+            )
+        return FileResponse(
+            path=str(temp_path),
+            media_type=file_row.mime_type,
+            filename=_download_name(download_name),
+            headers=headers,
+        )
 
     if file_row.storage_backend == "minio":
         client = get_minio_client(
@@ -1106,6 +1188,7 @@ def create_manual_post(
                 body_text=description,
                 metadata_date_text=req.event_date.isoformat() if req.event_date else None,
                 ingested_at=ingested_at,
+                mime_type="text/plain",
             ),
             _get_active_rules(db),
         )
@@ -1864,6 +1947,7 @@ def delete_document_file(
 @router.post("/documents/{id}/files", response_model=DocumentDetailResponse)
 def add_document_files(
     id: UUID,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = UploadFormFile(...),
     change_reason: str = Form("manual_file_add"),
     current_user: CurrentUser = Depends(require_roles(UserRole.EDITOR, UserRole.ADMIN)),
@@ -1893,6 +1977,7 @@ def add_document_files(
             source_ref=doc.source_ref,
             upload=upload,
             created_by=current_user.id,
+            background_tasks=background_tasks,
         )
         if stored.id in linked_file_ids:
             existing_link = _get_document_file_link(db, doc.id, stored.id)
@@ -1957,6 +2042,7 @@ def add_document_files(
 def replace_document_file(
     id: UUID,
     file_id: UUID,
+    background_tasks: BackgroundTasks,
     file: UploadFile = UploadFormFile(...),
     change_reason: str = Form("manual_file_replace"),
     current_user: CurrentUser = Depends(require_roles(UserRole.EDITOR, UserRole.ADMIN)),
@@ -1981,6 +2067,7 @@ def replace_document_file(
         source_ref=doc.source_ref,
         upload=file,
         created_by=current_user.id,
+        background_tasks=background_tasks,
     )
     new_display_filename = _normalize_document_file_display_name(file.filename, new_file.original_filename)
 

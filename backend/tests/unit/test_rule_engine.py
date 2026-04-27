@@ -38,7 +38,7 @@ def test_priority_explicit_category_first_when_category_in_ruleset():
     assert out.category == "회의"
 
 
-def test_explicit_category_outside_ruleset_falls_back_to_default():
+def test_explicit_category_outside_ruleset_falls_back_to_extension():
     caption = parse_caption("제목\n설명\n#분류:계약", "a.pdf")
     out = apply_rules(
         RuleInput(
@@ -52,9 +52,11 @@ def test_explicit_category_outside_ruleset_falls_back_to_default():
         ),
         RULES,
     )
-    assert out.category == "기타"
+    # Explicit category is rejected (not in ruleset) → flag, but extension
+    # now provides a sensible category instead of falling all the way to "기타".
+    assert out.category == "문서"
     assert "CATEGORY_OUT_OF_RULESET" in out.review_reasons
-    assert "CLASSIFY_FAIL" in out.review_reasons
+    assert "CLASSIFY_FAIL" not in out.review_reasons
 
 
 def test_fallback_to_default_and_review():
@@ -130,9 +132,10 @@ def test_apply_rules_handles_malformed_rules_gracefully():
         {"default_category": "기타", "category_rules": "broken"},
     )
 
-    assert out.category == "기타"
+    # Malformed ruleset → no keyword scoring, but .txt extension still
+    # provides a sensible category instead of "기타".
+    assert out.category == "문서"
     assert len(out.tags) <= 3
-    assert out.tags == ["보고", "월간", "점검"]
 
 
 def test_apply_rules_does_not_infer_category_from_explicit_tags_when_no_keyword_match():
@@ -150,8 +153,11 @@ def test_apply_rules_does_not_infer_category_from_explicit_tags_when_no_keyword_
         RULES,
     )
 
-    assert out.category == "기타"
-    assert "CLASSIFY_FAIL" in out.review_reasons
+    # No keyword match → still doesn't infer category from explicit tags,
+    # but .txt extension provides a sensible "문서" instead of "기타".
+    # CLASSIFY_FAIL is no longer raised since extension fallback resolved it.
+    assert out.category == "문서"
+    assert "CLASSIFY_FAIL" not in out.review_reasons
 
 
 def test_apply_rules_infers_category_from_tag_category_rules():

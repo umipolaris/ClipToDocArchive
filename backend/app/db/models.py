@@ -248,6 +248,7 @@ class File(Base):
     storage_backend: Mapped[str] = mapped_column(String(16), nullable=False)
     bucket: Mapped[str] = mapped_column(String(100), nullable=False)
     storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_state: Mapped[str] = mapped_column(String(16), nullable=False, default="stored", server_default="stored")
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
     uploaded_filename: Mapped[str] = mapped_column(Text, nullable=False)
     extension: Mapped[str | None] = mapped_column(String(16))

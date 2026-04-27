@@ -12,9 +12,7 @@ def parse_args():
     p.add_argument("--api", default="http://localhost:8000/api")
     p.add_argument("--file", action="append", required=True, help="repeat for batch upload")
     p.add_argument("--caption", default="")
-    p.add_argument("--source", default="telegram", choices=["telegram", "manual", "api"])
-    p.add_argument("--msg-id", default="")
-    p.add_argument("--chat-id", default="")
+    p.add_argument("--source", default="manual", choices=["manual", "api"])
     p.add_argument("--source-ref", default="")
     p.add_argument("--source-ref-prefix", default="")
     p.add_argument("--title", default="")
@@ -29,51 +27,31 @@ def _single_payload(args) -> tuple[dict, Path]:
         "caption": args.caption,
     }
 
-    if args.source == "telegram":
-        source_ref = args.source_ref or args.source_ref_prefix or f"msg:{args.msg_id}"
-        data.update(
-            {
-                "source_ref": source_ref,
-                "message_id": args.msg_id,
-                "chat_id": args.chat_id,
-            }
-        )
-    else:
-        if args.source_ref:
-            data["source_ref"] = args.source_ref
-        if args.title:
-            data["title"] = args.title
-        if args.description:
-            data["description"] = args.description
+    if args.source_ref:
+        data["source_ref"] = args.source_ref
+    if args.title:
+        data["title"] = args.title
+    if args.description:
+        data["description"] = args.description
 
     return data, file_path
 
 
 def _batch_payload(args) -> tuple[str, dict, list[Path]]:
-    endpoint = "/ingest/telegram/batch" if args.source == "telegram" else "/ingest/manual/batch"
+    endpoint = "/ingest/manual/batch"
     files = [Path(raw) for raw in args.file]
 
     data = {
         "source": args.source,
         "caption": args.caption,
     }
-    if args.source == "telegram":
-        prefix = args.source_ref_prefix or args.source_ref or f"msg:{args.msg_id}"
-        data.update(
-            {
-                "source_ref_prefix": prefix,
-                "message_id": args.msg_id,
-                "chat_id": args.chat_id,
-            }
-        )
-    else:
-        prefix = args.source_ref_prefix or args.source_ref
-        if prefix:
-            data["source_ref_prefix"] = prefix
-        if args.title:
-            data["title"] = args.title
-        if args.description:
-            data["description"] = args.description
+    prefix = args.source_ref_prefix or args.source_ref
+    if prefix:
+        data["source_ref_prefix"] = prefix
+    if args.title:
+        data["title"] = args.title
+    if args.description:
+        data["description"] = args.description
 
     return endpoint, data, files
 
@@ -86,7 +64,7 @@ def main():
             raise SystemExit(f"file not found: {file_path}")
 
     single_mode = len(file_paths) == 1
-    endpoint = "/ingest/telegram" if args.source == "telegram" else "/ingest/manual"
+    endpoint = "/ingest/manual"
     data: dict
     files_payload: list[tuple[str, tuple[str, object, str]]]
 

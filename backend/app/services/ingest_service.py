@@ -26,7 +26,6 @@ from app.db.models import (
     SourceType,
     Tag,
 )
-from app.schemas.ingest import IngestResultPayload
 from app.services.caption_parser import parse_caption
 from app.services.dedupe_service import find_by_checksum
 from app.services.error_codes import (
@@ -34,13 +33,12 @@ from app.services.error_codes import (
     IngestPipelineError,
     classify_exception_for_stage,
 )
-from app.services.openclaw_actions import build_result_actions
 from app.services.rule_engine import RuleInput, apply_rules
 from app.services.search_sync_service import enqueue_document_index_sync
 from app.services.storage_disk import put_file_from_path as put_file_disk_from_path
 from app.services.storage_minio import ensure_bucket, get_minio_client, put_file_from_path as put_file_minio_from_path
 from app.services.summary_service import build_summary
-from app.services.telegram_notify import notify_openclaw
+from app.services.text_extract import extract_body_text
 
 
 @dataclass
@@ -318,34 +316,6 @@ def _create_document(
     return doc
 
 
-def _notify_result(
-    job: IngestJob,
-    doc: Document | None,
-    error_code: str | None,
-    error_message: str | None,
-    category_name: str | None = None,
-) -> None:
-    settings = get_settings()
-    success = error_code is None
-    actions = build_result_actions(job, error_code)
-    payload = IngestResultPayload(
-        job_id=job.id,
-        state=job.state,
-        success=success,
-        document_id=doc.id if doc else None,
-        title=doc.title if doc else None,
-        category=category_name,
-        event_date=doc.event_date.isoformat() if (doc and doc.event_date) else None,
-        review_needed=(doc.review_status == ReviewStatus.NEEDS_REVIEW) if doc else False,
-        error_code=error_code,
-        error_message=error_message,
-        dashboard_url=f"{settings.frontend_base_url}/documents/{doc.id}" if doc else None,
-        actions=actions,
-        extra={"source_ref": job.source_ref},
-    )
-    notify_openclaw(payload)
-
-
 def _fail_job(
     db: Session,
     job: IngestJob,
@@ -371,11 +341,6 @@ def _fail_job(
             "error": error_message,
         },
     )
-
-    try:
-        _notify_result(job, doc, error_code, error_message)
-    except Exception:
-        pass
 
     return {
         "ok": False,
@@ -444,13 +409,27 @@ def process_ingest_job(db: Session, job_id: UUID) -> dict:
             )
 
         body_text = ""
+        try:
+            body_text = extract_body_text(
+                job.file_path_temp,
+                mime_type=store_result.mime_type,
+                filename=filename,
+            )
+        except Exception as extract_error:  # noqa: BLE001
+            _add_event(
+                db,
+                job,
+                event_type="WARNING",
+                message="body text extraction failed; continuing without body signals",
+                payload={"error": str(extract_error)[:500]},
+            )
 
         _set_state(
             db,
             job,
             IngestState.EXTRACTED,
             "caption and metadata extracted",
-            payload={"title": parsed.title},
+            payload={"title": parsed.title, "body_chars": len(body_text)},
         )
 
         try:
@@ -464,6 +443,7 @@ def process_ingest_job(db: Session, job_id: UUID) -> dict:
                     body_text=body_text,
                     metadata_date_text=None,
                     ingested_at=job.received_at,
+                    mime_type=store_result.mime_type,
                 ),
                 rules,
             )
@@ -531,15 +511,6 @@ def process_ingest_job(db: Session, job_id: UUID) -> dict:
             )
         else:
             _set_state(db, job, IngestState.PUBLISHED, "document published")
-
-        try:
-            _notify_result(job, doc, None, None, category_name=category.name if category else None)
-        except Exception as notify_error:  # noqa: BLE001
-            raise IngestPipelineError(
-                code=IngestErrorCode.NOTIFY_CALLBACK_FAIL,
-                stage="PUBLISHED",
-                message=str(notify_error),
-            ) from notify_error
 
         return {"ok": True, "job_id": str(job.id), "document_id": str(doc.id)}
 
